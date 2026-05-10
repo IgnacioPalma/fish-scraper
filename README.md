@@ -7,7 +7,7 @@ Este proyecto descarga datos diarios del servicio Copernicus Marine para la fran
 - **SST** — Sea Surface Temperature (°C, diario, ~5 km nativo).
 - **CHL** — Chlorophyll-a (mg/m³, diario, 4 km nativo).
 - **PHY** — Mixed Layer Depth, salinidad superficial y temperatura potencial a ~400 m (diario, 1/12°).
-- **BGC** — Oxígeno disuelto mínimo 0–200 m (proxy del techo de la OMZ), zooplancton, fitoplancton y producción primaria neta (diario, 0.25°).
+- **BGC** — Oxígeno disuelto mínimo 0–200 m (proxy del techo de la OMZ) y producción primaria neta (diario, 0.25°). El reanálisis BGC global no expone biomasa de plancton (`phyc`/`zooc`) para 2017–2022; quedan fuera del alcance de este flujo.
 - **SLA** — Anomalía del nivel del mar, topografía dinámica absoluta y velocidades geostróficas u/v (diario, 0.25°).
 - **WIND** — Componentes zonal y meridional del viento a 10 m (diario tras agregación, 0.125°).
 
@@ -53,7 +53,7 @@ La primera ejecución construye la imagen (puede tardar unos minutos). Al finali
 - `sst_atacama_2017_2022.nc` / `.csv` — SST con columnas `time, latitude, longitude, analysed_sst_celsius`.
 - `chl_atacama_2017_2022.nc` / `.csv` — clorofila con columnas `time, latitude, longitude, chl_mg_m3`.
 - `phy_atacama_2017_2022.nc` / `.csv` — columnas `mlotst, so_0m, thetao_400m`.
-- `bgc_atacama_2017_2022.nc` / `.csv` — columnas `o2_min_0_200m, zooc, phyc, nppv`.
+- `bgc_atacama_2017_2022.nc` / `.csv` — columnas `o2_min_0_200m, nppv`.
 - `sla_atacama_2017_2022.nc` / `.csv` — columnas `sla, adt, ugos, vgos`.
 - `wind_atacama_2017_2022.nc` / `.csv` — columnas `eastward_wind, northward_wind`.
 
@@ -75,7 +75,7 @@ El script genera `data/ships_enriched.csv` (mismo separador `;`) preservando tod
   - SST: `analysed_sst_celsius` (°C).
   - CHL: `chl_mg_m3` (mg/m³).
   - PHY: `mlotst` (m), `so_0m` (PSU), `thetao_400m` (°C).
-  - BGC: `o2_min_0_200m` (mmol/m³), `zooc`, `phyc` (mmol/m³), `nppv` (mg C/m³/día).
+  - BGC: `o2_min_0_200m` (mmol/m³), `nppv` (mg C/m³/día).
   - SLA: `sla`, `adt` (m), `ugos`, `vgos` (m/s).
   - WIND: `eastward_wind`, `northward_wind` (m/s).
 
@@ -126,25 +126,25 @@ Esto imprime todos los datasets de plancton dentro del producto. Elige el que te
 El script usa `cmems_mod_glo_phy_my_0.083deg_P1D-m` dentro del producto `GLOBAL_MULTIYEAR_PHY_001_030` (Mercator GLORYS12, diario, 1/12°). Para descubrir el ID actual:
 
 ```bash
-docker compose run --rm download_phy python -c "import copernicusmarine, re; out = str(copernicusmarine.describe(contains=['GLOBAL_MULTIYEAR_PHY_001_030'])); print('\n'.join(sorted(set(re.findall(r'cmems_mod_glo_phy[a-z0-9_.-]+', out)))))"
+docker compose run --rm download_phy python -c "import copernicusmarine, re; out = str(copernicusmarine.describe(contains=['GLOBAL_MULTIYEAR_PHY_001_030'])); print('\n'.join(sorted(set(re.findall(r'cmems_mod_glo_phy[A-Za-z0-9_.-]+', out)))))"
 ```
 
 Elige el que termine en `_P1D-m` (medias diarias). Luego edita `DATASET_ID` en `downloads/download_phy.py`.
 
 **Error: dataset BGC (biogeoquímico) no encontrado o renombrado.**
-El script usa `cmems_mod_glo_bgc_my_0.25deg_P1D-m` dentro del producto `GLOBAL_MULTIYEAR_BGC_001_029`. Para descubrir el ID actual:
+El script usa `cmems_mod_glo_bgc_my_0.25deg_P1D-m` dentro del producto `GLOBAL_MULTIYEAR_BGC_001_029`. Es un único dataset diario que expone {chl, no3, nppv, o2, po4, si} — **no incluye `phyc` ni `zooc`**, así que el script sólo extrae `o2` (reducido a `o2_min_0_200m`) y `nppv`. Para descubrir el ID actual:
 
 ```bash
-docker compose run --rm download_bgc python -c "import copernicusmarine, re; out = str(copernicusmarine.describe(contains=['GLOBAL_MULTIYEAR_BGC_001_029'])); print('\n'.join(sorted(set(re.findall(r'cmems_mod_glo_bgc[a-z0-9_.-]+', out)))))"
+docker compose run --rm download_bgc python -c "import copernicusmarine, re; out = str(copernicusmarine.describe(contains=['GLOBAL_MULTIYEAR_BGC_001_029'])); print('\n'.join(sorted(set(re.findall(r'cmems_mod_glo_bgc[A-Za-z0-9_.-]+', out)))))"
 ```
 
-Elige el que termine en `_P1D-m`. Luego edita `DATASET_ID` en `downloads/download_bgc.py`.
+Elige el que termine en `_P1D-m`. Luego edita `DATASET_ID` en `downloads/download_bgc.py`. Si necesitas otra variable del listado (`chl`, `no3`, `po4`, `si`), agrégala a `VARIABLES` y al dict `OUTPUT_VARIABLES`.
 
 **Error: dataset SLA (altimetría) no encontrado o renombrado.**
 El script usa `cmems_obs-sl_glo_phy-ssh_my_allsat-l4-duacs-0.25deg_P1D` dentro del producto `SEALEVEL_GLO_PHY_L4_MY_008_047`. Para descubrir el ID actual:
 
 ```bash
-docker compose run --rm download_sla python -c "import copernicusmarine, re; out = str(copernicusmarine.describe(contains=['SEALEVEL_GLO_PHY_L4_MY_008_047'])); print('\n'.join(sorted(set(re.findall(r'cmems_obs-sl_glo_phy[a-z0-9_.-]+', out)))))"
+docker compose run --rm download_sla python -c "import copernicusmarine, re; out = str(copernicusmarine.describe(contains=['SEALEVEL_GLO_PHY_L4_MY_008_047'])); print('\n'.join(sorted(set(re.findall(r'cmems_obs-sl_glo_phy[A-Za-z0-9_.-]+', out)))))"
 ```
 
 Elige el que contenga `allsat-l4-duacs` y termine en `_P1D`. Luego edita `DATASET_ID` en `downloads/download_sla.py`.
@@ -153,7 +153,7 @@ Elige el que contenga `allsat-l4-duacs` y termine en `_P1D`. Luego edita `DATASE
 El script usa `cmems_obs-wind_glo_phy_my_l4_0.125deg_PT1H` dentro del producto `WIND_GLO_PHY_L4_MY_012_006`. Para descubrir el ID actual:
 
 ```bash
-docker compose run --rm download_wind python -c "import copernicusmarine, re; out = str(copernicusmarine.describe(contains=['WIND_GLO_PHY_L4_MY_012_006'])); print('\n'.join(sorted(set(re.findall(r'cmems_obs-wind_glo_phy[a-z0-9_.-]+', out)))))"
+docker compose run --rm download_wind python -c "import copernicusmarine, re; out = str(copernicusmarine.describe(contains=['WIND_GLO_PHY_L4_MY_012_006'])); print('\n'.join(sorted(set(re.findall(r'cmems_obs-wind_glo_phy[A-Za-z0-9_.-]+', out)))))"
 ```
 
 Si Copernicus publica un dataset ya pre-agregado a paso diario (`_P1D` en lugar de `_PT1H`), conviene usarlo: ahorra ~24× espacio en disco. Si lo eliges, edita `DATASET_ID` en `downloads/download_wind.py` y borra/comenta la línea `ds.resample(time="1D").mean()` en `regrid_and_export`.

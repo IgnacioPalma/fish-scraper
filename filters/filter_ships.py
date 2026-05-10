@@ -14,7 +14,7 @@ OUTPUT_CSV = DATA_DIR / "ships_filtered.csv"
 
 REGION_VALUE = "Región de Atacama"
 FLOTA_VALUE = "Artesanal"
-ESPECIE_VALUE = "Jurel"
+ESPECIE_VALUE = "JUREL"
 
 def dms_serie_a_decimal(
     serie: pd.Series, *, hemisferio_negativo: bool = True

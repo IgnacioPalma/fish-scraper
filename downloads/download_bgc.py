@@ -6,10 +6,18 @@ producto GLOBAL_MULTIYEAR_BGC_001_029. De ese producto extrae:
     - o2_min_0_200m : oxígeno disuelto mínimo entre 0 y 200 m (mmol/m³),
                       proxy del techo de la zona de mínima oxigenación
                       (OMZ) que limita la distribución de jurel.
-    - zooc          : biomasa de zooplancton en superficie (mmol/m³).
-    - phyc          : biomasa de fitoplancton en superficie (mmol/m³).
     - nppv          : producción primaria neta vertical en superficie
                       (mg C/m³/día).
+
+Sobre las variables que no están en este producto:
+    El reanálisis BGC global a 0.25° expone únicamente {chl, no3, nppv,
+    o2, po4, si}. NO incluye `phyc` (fitoplancton) ni `zooc`
+    (zooplancton) para nuestro período (2017–2022). Si en el futuro
+    necesitamos biomasa de plancton, hay que pasarse a un producto
+    distinto (p. ej. el regional IBI o un near-real-time) o a un
+    modelo distinto. Por ahora, `nppv` cumple un rol parecido como
+    índice de productividad — la literatura de jurel pondera más el
+    techo de la OMZ (vía `o2_min_0_200m`) que el plancton mismo.
 
 Atención: el producto BGC viene a 0.25° (≈25 km), bastante más grueso
 que SST/CHL. El regrillado bilineal a 1/24° suaviza inevitablemente la
@@ -34,7 +42,7 @@ from utils.cmems_common import print_summary, read_credentials, regrid_to_target
 # diario, 0.25°). copernicusmarine.subset() requiere el ID de DATASET.
 # Si Copernicus lo renombra, ver README → "Solución de problemas".
 DATASET_ID = "cmems_mod_glo_bgc_my_0.25deg_P1D-m"
-VARIABLES = ["o2", "zooc", "phyc", "nppv"]
+VARIABLES = ["o2", "nppv"]
 
 START_DATE = "2017-01-01"
 END_DATE = "2022-12-31"
@@ -43,8 +51,8 @@ LAT_MIN, LAT_MAX = -29.0, -25.0
 LON_MIN, LON_MAX = -72.0, -70.0
 
 # Rango vertical: 0–200 m cubre la columna de agua donde se encuentra
-# el techo de la OMZ frente a Atacama. Para zooc/phyc/nppv tomamos sólo
-# el nivel superficial; para o2 reducimos a su mínimo en la columna.
+# el techo de la OMZ frente a Atacama. Para nppv tomamos sólo el nivel
+# superficial; para o2 reducimos a su mínimo en la columna.
 DEPTH_MIN = 0.0
 DEPTH_MAX = 200.0
 DEPTH_SURFACE = 0.0
@@ -55,8 +63,6 @@ CSV_FILENAME = "bgc_atacama_2017_2022.csv"
 
 OUTPUT_VARIABLES = {
     "o2_min_0_200m": "mmol/m³",
-    "zooc": "mmol/m³",
-    "phyc": "mmol/m³",
     "nppv": "mg C/m³/día",
 }
 
@@ -111,7 +117,7 @@ def _surface(da: xr.DataArray) -> xr.DataArray:
 
 def regrid_and_export(nc_path: str) -> str:
     """Reduce el rango vertical a campos 2-D (mínimo 0–200 m para O₂,
-    superficie para el resto), regrilla a la grilla destino común,
+    superficie para nppv), regrilla a la grilla destino común,
     reescribe el NetCDF y exporta el CSV."""
     csv_path = os.path.join(OUTPUT_DIR, CSV_FILENAME)
     print(f"Reduciendo profundidades y regrillando {nc_path}...")
@@ -121,12 +127,10 @@ def regrid_and_export(nc_path: str) -> str:
 
     # Mínimo de O₂ en la columna 0–200 m: proxy del techo de la OMZ.
     o2_min = ds["o2"].min(dim="depth", skipna=True)
+    nppv_surface = _surface(ds["nppv"])
 
-    # zooc / phyc / nppv en superficie.
-    surface_vars = {name: _surface(ds[name]) for name in ("zooc", "phyc", "nppv")}
-
-    ds = ds.drop_vars(["o2", "zooc", "phyc", "nppv"])
-    ds = ds.assign(o2_min_0_200m=o2_min, **surface_vars)
+    ds = ds.drop_vars(["o2", "nppv"])
+    ds = ds.assign(o2_min_0_200m=o2_min, nppv=nppv_surface)
 
     # Tras el min/sel anterior ya no hay variables que usen la dim
     # `depth`, pero la coord aún vive a nivel de Dataset con los
