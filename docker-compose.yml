@@ -1,0 +1,40 @@
+# Configuración común a todos los servicios (build, volumen de datos, credenciales)
+x-base: &base
+  build: .
+  env_file: .env
+  volumes:
+    - ./data:/app/data
+
+services:
+  # Descarga SST. Uso: `docker compose run --rm download_sst`
+  download_sst:
+    <<: *base
+    command: ["python", "download_sst.py"]
+
+  # Descarga clorofila-a. Uso: `docker compose run --rm download_chl`
+  download_chl:
+    <<: *base
+    command: ["python", "download_chl.py"]
+
+  # Conveniencia: ejecuta SST y luego CHL en secuencia.
+  # Uso: `docker compose run --rm download_all`
+  # Nota: el `&&` corta si SST falla (CHL no corre); intencional.
+  download_all:
+    <<: *base
+    command: ["sh", "-c", "python download_sst.py && python download_chl.py"]
+
+  # Servidor Jupyter para análisis posterior. Uso: `docker compose up jupyter`
+  # Nota: el token está deshabilitado a propósito porque el puerto solo se publica
+  # en localhost; si se expone a la red conviene reactivarlo.
+  jupyter:
+    <<: *base
+    command: >
+      jupyter notebook
+      --ip=0.0.0.0
+      --port=8888
+      --no-browser
+      --allow-root
+      --NotebookApp.token=''
+      --NotebookApp.password=''
+    ports:
+      - "127.0.0.1:8888:8888"
