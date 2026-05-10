@@ -8,9 +8,10 @@ del producto SEALEVEL_GLO_PHY_L4_MY_008_047. Variables:
     - ugos  : velocidad geostrófica zonal en superficie (m/s).
     - vgos  : velocidad geostrófica meridional en superficie (m/s).
 
-La altimetría L4 multi-misión llega a 0.25° (≈25 km). El regrillado
-bilineal a 1/24° suaviza la señal pero deja todas las capas en la
-grilla compartida con SST/CHL para que el merge downstream sea trivial.
+La altimetría L4 multi-misión llega a 0.125° (≈12 km). El regrillado
+bilineal a 1/24° interpola hacia una grilla más fina; deja todas las
+capas en la grilla compartida con SST/CHL para que el merge
+downstream sea trivial.
 
 Las credenciales se leen exclusivamente de las variables de entorno
 COPERNICUS_USERNAME y COPERNICUS_PASSWORD (cargadas desde .env por Compose).
@@ -27,9 +28,9 @@ from utils.cmems_common import print_summary, read_credentials, regrid_to_target
 
 
 # Producto: SEALEVEL_GLO_PHY_L4_MY_008_047 (DUACS multi-misión, diario,
-# 0.25°). copernicusmarine.subset() requiere el ID de DATASET. Si
+# 0.125°). copernicusmarine.subset() requiere el ID de DATASET. Si
 # Copernicus lo renombra, ver README → "Solución de problemas".
-DATASET_ID = "cmems_obs-sl_glo_phy-ssh_my_allsat-l4-duacs-0.25deg_P1D"
+DATASET_ID = "cmems_obs-sl_glo_phy-ssh_my_allsat-l4-duacs-0.125deg_P1D"
 VARIABLES = ["sla", "adt", "ugos", "vgos"]
 
 START_DATE = "2017-01-01"

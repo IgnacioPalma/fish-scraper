@@ -8,7 +8,7 @@ Este proyecto descarga datos diarios del servicio Copernicus Marine para la fran
 - **CHL** — Chlorophyll-a (mg/m³, diario, 4 km nativo).
 - **PHY** — Mixed Layer Depth, salinidad superficial y temperatura potencial a ~400 m (diario, 1/12°).
 - **BGC** — Oxígeno disuelto mínimo 0–200 m (proxy del techo de la OMZ) y producción primaria neta (diario, 0.25°). El reanálisis BGC global no expone biomasa de plancton (`phyc`/`zooc`) para 2017–2022; quedan fuera del alcance de este flujo.
-- **SLA** — Anomalía del nivel del mar, topografía dinámica absoluta y velocidades geostróficas u/v (diario, 0.25°).
+- **SLA** — Anomalía del nivel del mar, topografía dinámica absoluta y velocidades geostróficas u/v (diario, 0.125°).
 - **WIND** — Componentes zonal y meridional del viento a 10 m (diario tras agregación, 0.125°).
 
 Todas las capas terminan sobre la misma grilla 1/24° (≈4 km), de modo que un cruce SST↔CHL↔PHY↔BGC↔SLA↔WIND es un `pd.merge(..., on=["time", "latitude", "longitude"])` directo, sin regrillado posterior. También provee un servidor Jupyter para análisis posterior. Todo corre dentro de Docker, así que el entorno es idéntico en macOS y Windows.
@@ -141,7 +141,7 @@ docker compose run --rm download_bgc python -c "import copernicusmarine, re; out
 Elige el que termine en `_P1D-m`. Luego edita `DATASET_ID` en `downloads/download_bgc.py`. Si necesitas otra variable del listado (`chl`, `no3`, `po4`, `si`), agrégala a `VARIABLES` y al dict `OUTPUT_VARIABLES`.
 
 **Error: dataset SLA (altimetría) no encontrado o renombrado.**
-El script usa `cmems_obs-sl_glo_phy-ssh_my_allsat-l4-duacs-0.25deg_P1D` dentro del producto `SEALEVEL_GLO_PHY_L4_MY_008_047`. Para descubrir el ID actual:
+El script usa `cmems_obs-sl_glo_phy-ssh_my_allsat-l4-duacs-0.125deg_P1D` dentro del producto `SEALEVEL_GLO_PHY_L4_MY_008_047`. Para descubrir el ID actual:
 
 ```bash
 docker compose run --rm download_sla python -c "import copernicusmarine, re; out = str(copernicusmarine.describe(contains=['SEALEVEL_GLO_PHY_L4_MY_008_047'])); print('\n'.join(sorted(set(re.findall(r'cmems_obs-sl_glo_phy[A-Za-z0-9_.-]+', out)))))"
