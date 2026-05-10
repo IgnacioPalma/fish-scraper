@@ -9,19 +9,25 @@ services:
   # Descarga SST. Uso: `docker compose run --rm download_sst`
   download_sst:
     <<: *base
-    command: ["python", "download_sst.py"]
+    command: ["python", "-m", "downloads.download_sst"]
 
   # Descarga clorofila-a. Uso: `docker compose run --rm download_chl`
   download_chl:
     <<: *base
-    command: ["python", "download_chl.py"]
+    command: ["python", "-m", "downloads.download_chl"]
 
   # Conveniencia: ejecuta SST y luego CHL en secuencia.
   # Uso: `docker compose run --rm download_all`
   # Nota: el `&&` corta si SST falla (CHL no corre); intencional.
   download_all:
     <<: *base
-    command: ["sh", "-c", "python download_sst.py && python download_chl.py"]
+    command: ["sh", "-c", "python -m downloads.download_sst && python -m downloads.download_chl"]
+
+  # Filtra data/ships.csv a la flota Artesanal en la Región de Atacama.
+  # Uso: `docker compose run --rm filter_ships`
+  filter_ships:
+    <<: *base
+    command: ["python", "-m", "filters.filter_ships"]
 
   # Servidor Jupyter para análisis posterior. Uso: `docker compose up jupyter`
   # Nota: el token está deshabilitado a propósito porque el puerto solo se publica

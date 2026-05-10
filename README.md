@@ -72,7 +72,7 @@ El script usa el dataset `METOFFICE-GLO-SST-L4-REP-OBS-SST` (dentro del producto
 docker compose run --rm download_sst python -c "import copernicusmarine, re; out = str(copernicusmarine.describe(contains=['SST_GLO_SST_L4_REP_OBSERVATIONS_010_011'])); print('\n'.join(sorted(set(re.findall(r'METOFFICE[A-Z0-9-]+', out)))))"
 ```
 
-Luego edita la constante `DATASET_ID` al inicio de `download_sst.py`.
+Luego edita la constante `DATASET_ID` al inicio de `downloads/download_sst.py`.
 
 **Error: dataset CHL no encontrado o renombrado.**
 El script usa el dataset `cmems_obs-oc_glo_bgc-plankton_my_l4-gapfree-multi-4km_P1D` (dentro del producto `OCEANCOLOUR_GLO_BGC_L4_MY_009_104`). Los nombres de dataset cambiaron en la migración de plataforma de Copernicus en 2024 y podrían volver a cambiar. Si esto pasa:
@@ -81,7 +81,7 @@ El script usa el dataset `cmems_obs-oc_glo_bgc-plankton_my_l4-gapfree-multi-4km_
 docker compose run --rm download_chl python -c "import copernicusmarine, re; out = str(copernicusmarine.describe(contains=['OCEANCOLOUR_GLO_BGC_L4_MY_009_104'])); print('\n'.join(sorted(set(re.findall(r'cmems_obs-oc_glo_bgc-plankton[a-z0-9_-]+', out)))))"
 ```
 
-Esto imprime todos los datasets de plancton dentro del producto. Elige el que termine en `_P1D` (diario) y contenga `gapfree-multi-4km` (gap-filled, 4 km, multi-sensor). Luego edita la constante `DATASET_ID` al inicio de `download_chl.py`.
+Esto imprime todos los datasets de plancton dentro del producto. Elige el que termine en `_P1D` (diario) y contenga `gapfree-multi-4km` (gap-filled, 4 km, multi-sensor). Luego edita la constante `DATASET_ID` al inicio de `downloads/download_chl.py`.
 
 **Saltos de línea en Windows.**
 Si editas `.env` o `download_sst.py` con un editor que guarda en formato CRLF, normalmente no hay problema porque Python tolera ambos formatos. Si aparece algún error raro, configura tu editor (VS Code, Notepad++) para guardar en LF.
@@ -94,14 +94,25 @@ En Linux puede aparecer si el usuario del contenedor no coincide con el del host
 ```
 sst_atacama/
 ├── Dockerfile             # imagen basada en python:3.11-slim
-├── docker-compose.yml     # servicios download_sst, download_chl, download_all, jupyter
+├── docker-compose.yml     # servicios download_sst, download_chl, download_all, filter_ships, jupyter
 ├── requirements.txt       # dependencias Python
-├── cmems_common.py        # helpers compartidos + grilla destino unificada
-├── download_sst.py        # descarga SST + regrilla + exporta CSV
-├── download_chl.py        # descarga CHL + regrilla + exporta CSV
+├── utils/                 # paquete con helpers compartidos
+│   ├── __init__.py
+│   └── cmems_common.py    # credenciales + grilla destino unificada + resumen
+├── downloads/             # paquete con los descargadores
+│   ├── __init__.py
+│   ├── download_sst.py    # descarga SST + regrilla + exporta CSV
+│   └── download_chl.py    # descarga CHL + regrilla + exporta CSV
+├── filters/               # paquete con filtros sobre CSVs locales
+│   ├── __init__.py
+│   └── filter_ships.py    # filtra data/ships.csv (flota Artesanal, Región de Atacama)
 ├── .env.example           # plantilla de credenciales (sin valores)
 ├── .env                   # credenciales reales (NO se versiona)
 ├── .gitignore
 ├── README.md
 └── data/                  # archivos generados (montado como volumen)
 ```
+
+> Los `.py` se ejecutan con `python -m <paquete>.<modulo>` desde `/app` (ya
+> configurado en `docker-compose.yml`); así el `from utils.cmems_common import …`
+> de los descargadores resuelve sin trucos de `sys.path`.
