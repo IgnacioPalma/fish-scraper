@@ -29,6 +29,13 @@ services:
     <<: *base
     command: ["python", "-m", "filters.filter_ships"]
 
+  # Cruza ships_filtered.csv contra los NetCDF de SST/CHL y exporta
+  # data/ships_enriched.csv con las observaciones más cercanas en espacio
+  # para el día del zarpe. Uso: `docker compose run --rm enrich_ships`
+  enrich_ships:
+    <<: *base
+    command: ["python", "-m", "enrich.enrich_ships"]
+
   # Servidor Jupyter para análisis posterior. Uso: `docker compose up jupyter`
   # Nota: el token está deshabilitado a propósito porque el puerto solo se publica
   # en localhost; si se expone a la red conviene reactivarlo.

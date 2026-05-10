@@ -1,9 +1,6 @@
 """
 Filtra data/ships.csv a los lances de la flota Artesanal en la Región de
 Atacama y exporta el resultado a data/ships_filtered.csv.
-
-El CSV de entrada usa ';' como separador y contiene ~93k filas; el filtro
-resulta en ~11.5k filas.
 """
 
 import sys

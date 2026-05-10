@@ -44,6 +44,23 @@ La primera ejecución construye la imagen (puede tardar unos minutos). Al finali
 
 Cada script imprime un resumen con cantidad de filas, rango temporal y estadísticas básicas (°C para SST, mg/m³ para CHL).
 
+## Enriquecer lances con SST y CHL
+
+Una vez descargados los NetCDF de SST y CHL y filtrado `data/ships_filtered.csv` (con las columnas `LATITUD_DD`, `LONGITUD_DD`, `FECHA_HORA_ZARPE_UTC`), puedes cruzar ambas fuentes:
+
+```bash
+docker compose run --rm enrich_ships
+```
+
+El script genera `data/ships_enriched.csv` (mismo separador `;`) preservando todas las columnas originales y agregando cinco:
+
+- `LAT_GRILLA`, `LON_GRILLA` — coordenadas de la celda de grilla más cercana con datos.
+- `DISTANCIA_KM_GRILLA` — distancia aproximada lance↔celda (km).
+- `analysed_sst_celsius` — SST de esa celda en °C.
+- `chl_mg_m3` — clorofila-a de esa celda en mg/m³.
+
+Para cada lance se busca, dentro de la grilla 1/24°, la celda no-nula más cercana donde estén presentes simultáneamente SST y CHL ese día (UTC). Lances fuera del bounding box, sin coordenadas, sin fecha UTC válida o en días totalmente cubiertos por nubes/tierra quedan con NaN en las cinco columnas (no abortan). El resumen final imprime cuántas filas cayeron en cada categoría.
+
 ## Iniciar Jupyter
 
 ```bash
@@ -94,7 +111,7 @@ En Linux puede aparecer si el usuario del contenedor no coincide con el del host
 ```
 sst_atacama/
 ├── Dockerfile             # imagen basada en python:3.11-slim
-├── docker-compose.yml     # servicios download_sst, download_chl, download_all, filter_ships, jupyter
+├── docker-compose.yml     # servicios download_sst, download_chl, download_all, filter_ships, enrich_ships, jupyter
 ├── requirements.txt       # dependencias Python
 ├── utils/                 # paquete con helpers compartidos
 │   ├── __init__.py
@@ -106,6 +123,9 @@ sst_atacama/
 ├── filters/               # paquete con filtros sobre CSVs locales
 │   ├── __init__.py
 │   └── filter_ships.py    # filtra data/ships.csv (flota Artesanal, Región de Atacama)
+├── enrich/                # paquete con cruces espaciotemporales
+│   ├── __init__.py
+│   └── enrich_ships.py    # cruza ships_filtered.csv con NetCDF de SST/CHL
 ├── .env.example           # plantilla de credenciales (sin valores)
 ├── .env                   # credenciales reales (NO se versiona)
 ├── .gitignore
