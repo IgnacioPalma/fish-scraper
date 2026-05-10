@@ -1,6 +1,6 @@
 """
-Filtra data/ships.csv a los lances de la flota Artesanal en la Región de
-Atacama y exporta el resultado a data/ships_filtered.csv.
+Filtra data/ships.csv a los lances de Jurel de la flota Artesanal en la
+Región de Atacama y exporta el resultado a data/ships_filtered.csv.
 """
 
 import sys
@@ -14,6 +14,7 @@ OUTPUT_CSV = DATA_DIR / "ships_filtered.csv"
 
 REGION_VALUE = "Región de Atacama"
 FLOTA_VALUE = "Artesanal"
+ESPECIE_VALUE = "Jurel"
 
 def dms_serie_a_decimal(
     serie: pd.Series, *, hemisferio_negativo: bool = True
@@ -73,7 +74,7 @@ def main() -> None:
     # El archivo usa ';' como separador (no ',').
     df = pd.read_csv(INPUT_CSV, sep=";", dtype=str, low_memory=False)
 
-    faltantes = {"REGION", "FLOTA"} - set(df.columns)
+    faltantes = {"REGION", "FLOTA", "ESPECIE"} - set(df.columns)
     if faltantes:
         print(
             f"ERROR: faltan columnas requeridas en el CSV: {sorted(faltantes)}.",
@@ -81,12 +82,17 @@ def main() -> None:
         )
         sys.exit(2)
 
-    filtrado = df[(df["REGION"] == REGION_VALUE) & (df["FLOTA"] == FLOTA_VALUE)]
+    filtrado = df[
+        (df["REGION"] == REGION_VALUE)
+        & (df["FLOTA"] == FLOTA_VALUE)
+        & (df["ESPECIE"] == ESPECIE_VALUE)
+    ]
 
     if filtrado.empty:
         print(
             "ERROR: el filtro no produjo filas. Revisa que los valores\n"
-            f"       REGION='{REGION_VALUE}' y FLOTA='{FLOTA_VALUE}' aún existan.",
+            f"       REGION='{REGION_VALUE}', FLOTA='{FLOTA_VALUE}' y\n"
+            f"       ESPECIE='{ESPECIE_VALUE}' aún existan.",
             file=sys.stderr,
         )
         sys.exit(1)
@@ -122,7 +128,8 @@ def main() -> None:
     print(
         f"Filas totales:           {len(df):,}\n"
         f"Filas filtradas:         {len(filtrado):,} "
-        f"(REGION='{REGION_VALUE}', FLOTA='{FLOTA_VALUE}')\n"
+        f"(REGION='{REGION_VALUE}', FLOTA='{FLOTA_VALUE}', "
+        f"ESPECIE='{ESPECIE_VALUE}')\n"
         f"Filas sin coordenada:    {n_sin_coord:,} (LATITUD_DD/LONGITUD_DD = NaN)\n"
         f"Filas sin zarpe UTC:     {n_sin_zarpe:,} (FECHA_HORA_ZARPE_UTC = NaN)\n"
         f"Archivo escrito:         {OUTPUT_CSV}"
