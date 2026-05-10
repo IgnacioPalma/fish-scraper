@@ -16,12 +16,50 @@ services:
     <<: *base
     command: ["python", "-m", "downloads.download_chl"]
 
-  # Conveniencia: ejecuta SST y luego CHL en secuencia.
+  # Descarga variables físicas (MLD, SSS, thetao_400m) del producto
+  # GLOBAL_MULTIYEAR_PHY_001_030. Uso: `docker compose run --rm download_phy`
+  download_phy:
+    <<: *base
+    command: ["python", "-m", "downloads.download_phy"]
+
+  # Descarga biogeoquímica (O₂ mínimo 0–200 m, zooc, phyc, nppv) del
+  # producto GLOBAL_MULTIYEAR_BGC_001_029.
+  # Uso: `docker compose run --rm download_bgc`
+  download_bgc:
+    <<: *base
+    command: ["python", "-m", "downloads.download_bgc"]
+
+  # Descarga altimetría (sla, adt, ugos, vgos) del producto
+  # SEALEVEL_GLO_PHY_L4_MY_008_047.
+  # Uso: `docker compose run --rm download_sla`
+  download_sla:
+    <<: *base
+    command: ["python", "-m", "downloads.download_sla"]
+
+  # Descarga vientos a 10 m (eastward_wind, northward_wind) del producto
+  # WIND_GLO_PHY_L4_MY_012_006. El script agrega el viento horario a media
+  # diaria antes de regrillar. Uso: `docker compose run --rm download_wind`
+  download_wind:
+    <<: *base
+    command: ["python", "-m", "downloads.download_wind"]
+
+  # Conveniencia: ejecuta los seis descargadores en secuencia.
   # Uso: `docker compose run --rm download_all`
-  # Nota: el `&&` corta si SST falla (CHL no corre); intencional.
+  # Nota: el `&&` corta a la primera falla; los descargadores siguientes
+  # no corren. Es intencional — preferimos detenernos y revisar antes
+  # de seguir descargando.
   download_all:
     <<: *base
-    command: ["sh", "-c", "python -m downloads.download_sst && python -m downloads.download_chl"]
+    command:
+      - "sh"
+      - "-c"
+      - >-
+        python -m downloads.download_sst &&
+        python -m downloads.download_chl &&
+        python -m downloads.download_phy &&
+        python -m downloads.download_bgc &&
+        python -m downloads.download_sla &&
+        python -m downloads.download_wind
 
   # Filtra data/ships.csv a la flota Artesanal en la Región de Atacama.
   # Uso: `docker compose run --rm filter_ships`
@@ -29,7 +67,9 @@ services:
     <<: *base
     command: ["python", "-m", "filters.filter_ships"]
 
-  # Cruza ships_filtered.csv contra los NetCDF de SST/CHL y exporta
+  # Cruza ships_filtered.csv contra los NetCDF descargados (SST y CHL son
+  # obligatorios; PHY, BGC, SLA y WIND son opcionales — si faltan, las
+  # columnas correspondientes quedan NaN) y exporta
   # data/ships_enriched.csv con las observaciones más cercanas en espacio
   # para el día del zarpe. Uso: `docker compose run --rm enrich_ships`
   enrich_ships:

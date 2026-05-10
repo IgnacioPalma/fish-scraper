@@ -1,13 +1,22 @@
 """
-Cruza data/ships_filtered.csv contra los NetCDF de SST y CHL y exporta
-data/ships_enriched.csv con la observación más cercana en espacio para
-el día del zarpe.
+Cruza data/ships_filtered.csv contra los NetCDF descargados (SST, CHL,
+PHY, BGC, SLA, WIND) y exporta data/ships_enriched.csv con la
+observación más cercana en espacio para el día del zarpe.
 
-Para cada lance se busca, dentro de la grilla de 1/24° (≈4 km), la celda
-no-nula MÁS CERCANA donde existan SIMULTÁNEAMENTE SST y CHL ese día.
-Lances fuera del bounding box de la grilla, sin coordenadas, sin fecha
-UTC válida o en días totalmente cubiertos por nubes/tierra quedan con
-NaN en las columnas nuevas (no abortan).
+Para cada lance se busca, dentro de la grilla de 1/24° (≈4 km), la
+celda más cercana donde existan SIMULTÁNEAMENTE SST y CHL no-nulas ese
+día (validez "primaria"). El resto de variables (MLD, salinidad,
+oxígeno, plancton, anomalía altimétrica, vientos…) se muestrean en
+esa misma celda; sus NaN coastal/land se propagan tal cual al CSV.
+
+Lances fuera del bounding box, sin coordenadas, sin fecha UTC válida o
+en días totalmente cubiertos por nubes/tierra quedan con NaN en las
+columnas nuevas (no abortan).
+
+Si alguno de los NetCDF opcionales (PHY, BGC, SLA, WIND) no existe,
+se imprime un aviso por stderr y el script sigue: las columnas
+correspondientes quedan NaN. Esto preserva la compatibilidad con un
+flujo histórico que sólo haya descargado SST y CHL.
 """
 
 import math
@@ -28,6 +37,15 @@ SST_NC = DATA_DIR / "sst_atacama_2017_2022.nc"
 CHL_NC = DATA_DIR / "chl_atacama_2017_2022.nc"
 OUTPUT_CSV = DATA_DIR / "ships_enriched.csv"
 
+# NetCDFs opcionales: si están presentes se mergean al Dataset común;
+# si faltan, se imprime un aviso y se siguen sin esa familia.
+OPTIONAL_NETCDFS: dict[str, str] = {
+    "phy_atacama_2017_2022.nc": "PHY (MLD/salinidad/temp 400 m)",
+    "bgc_atacama_2017_2022.nc": "BGC (O₂/zooplancton/fitoplancton/NPP)",
+    "sla_atacama_2017_2022.nc": "SLA (altimetría/corrientes geostróficas)",
+    "wind_atacama_2017_2022.nc": "WIND (vientos a 10 m)",
+}
+
 # Bounding box de la grilla (idéntico al de los descargadores).
 LAT_MIN, LAT_MAX = -29.0, -25.0
 LON_MIN, LON_MAX = -72.0, -70.0
@@ -45,23 +63,27 @@ SCALE_LON = math.cos(math.radians(LAT_REF))
 DEG_TO_KM = 111.32
 
 REQUIRED_COLUMNS = ("LATITUD_DD", "LONGITUD_DD", "FECHA_HORA_ZARPE_UTC")
-NEW_COLUMNS = (
-    "LAT_GRILLA",
-    "LON_GRILLA",
-    "DISTANCIA_KM_GRILLA",
-    "analysed_sst_celsius",
-    "chl_mg_m3",
-)
+
+# Columnas posicionales que el enriquecimiento agrega siempre (las
+# columnas de valor dependen de qué NetCDFs estén presentes y se
+# determinan en tiempo de ejecución a partir del Dataset combinado).
+GRID_COLUMNS = ("LAT_GRILLA", "LON_GRILLA", "DISTANCIA_KM_GRILLA")
+
+# Variables "primarias" para construir el árbol de celdas válidas: una
+# celda califica sólo si AMBAS están presentes ese día. Las demás
+# variables se muestrean en esas celdas aunque sean NaN allí.
+PRIMARY_VARS = ("analysed_sst_celsius", "chl_mg_m3")
 
 
 def load_grid_dataset() -> xr.Dataset:
-    """Carga SST y CHL desde los NetCDF, convierte SST de Kelvin a Celsius
-    y los fusiona en un único Dataset con variables `analysed_sst_celsius`
-    y `chl_mg_m3` sobre la grilla compartida.
+    """Carga SST y CHL (obligatorios) y, si están presentes, los
+    NetCDFs opcionales de PHY, BGC, SLA y WIND. Devuelve un único
+    Dataset combinado sobre la grilla compartida.
 
-    Los `.nc` guardan SST en Kelvin (`analysed_sst`) y CHL bajo el nombre
-    upstream `CHL`; aquí dejamos los nombres en el formato que ya usan los
-    CSV downstream para que un eventual merge sea directo.
+    SST llega en Kelvin en el .nc (download_sst.py reescribe el NetCDF
+    antes de la conversión a Celsius del CSV); aquí convertimos a °C
+    y renombramos para que los nombres del Dataset coincidan con los
+    de los CSV downstream.
     """
     if not SST_NC.exists():
         print(
@@ -100,9 +122,33 @@ def load_grid_dataset() -> xr.Dataset:
         )
         sys.exit(2)
 
-    sst_celsius = (sst["analysed_sst"] - 273.15).rename("analysed_sst_celsius")
-    chl_named = chl["CHL"].rename("chl_mg_m3")
-    return xr.merge([sst_celsius, chl_named])
+    arrays: list[xr.DataArray] = [
+        (sst["analysed_sst"] - 273.15).rename("analysed_sst_celsius"),
+        chl["CHL"].rename("chl_mg_m3"),
+    ]
+
+    # NetCDFs opcionales. Si alguno falta, lo decimos por stderr y
+    # continuamos: las columnas correspondientes quedarán NaN en el
+    # CSV final.
+    for filename, label in OPTIONAL_NETCDFS.items():
+        path = DATA_DIR / filename
+        if not path.exists():
+            print(
+                f"AVISO: no se encontró {path.name} ({label}). "
+                "Las columnas correspondientes quedarán NaN.",
+                file=sys.stderr,
+            )
+            continue
+        with xr.open_dataset(path, engine="netcdf4") as extra_raw:
+            extra = extra_raw.load()
+        for vname in extra.data_vars:
+            arrays.append(extra[vname])
+
+    # join="outer" tolera NetCDFs con cobertura temporal ligeramente
+    # distinta (rellena con NaN los días que no estén en todos).
+    # compat="override" evita conflictos por atributos cuando dos
+    # archivos describen la misma coord con metadatos distintos.
+    return xr.merge(arrays, join="outer", compat="override")
 
 
 def load_ships(path: Path) -> pd.DataFrame:
@@ -154,21 +200,25 @@ def project_xy(lat: np.ndarray, lon: np.ndarray) -> np.ndarray:
     return np.column_stack([lon * SCALE_LON, lat])
 
 
+def _squeeze_2d(arr: np.ndarray) -> np.ndarray:
+    """Si `.sel(time=str)` dejó la dim time con tamaño 1, nos quedamos
+    con la primera lámina (lat, lon) para que el resto sea 2-D."""
+    return arr[0] if arr.ndim == 3 else arr
+
+
 def build_day_tree(ds_day: xr.Dataset):
     """Para un slice de un día, devuelve (tree, lat_valid, lon_valid,
-    sst_valid, chl_valid) sólo sobre celdas con AMBAS variables no-nulas.
-    Devuelve None si ese día la grilla está totalmente cubierta por
-    nubes/tierra (cero celdas válidas).
-    """
-    sst_arr = ds_day["analysed_sst_celsius"].values
-    chl_arr = ds_day["chl_mg_m3"].values
+    valid_arrays) donde valid_arrays es {nombre_variable: array 1-D}
+    alineado en orden con los puntos del cKDTree.
 
-    # `.sel(time=...)` puede dejar la dimensión `time` con largo 1 según
-    # cómo xarray resuelva el partial-string indexing; nos quedamos siempre
-    # con la primera lámina (lat, lon) para que el resto sea 2-D.
-    if sst_arr.ndim == 3:
-        sst_arr = sst_arr[0]
-        chl_arr = chl_arr[0]
+    El árbol se construye sólo sobre celdas con SST y CHL no-nulas
+    simultáneamente (validez primaria). El resto de variables se
+    muestrean en esas mismas celdas; sus posibles NaN se propagan tal
+    cual al CSV. Devuelve None si ese día no hay celdas primarias
+    válidas.
+    """
+    sst_arr = _squeeze_2d(ds_day["analysed_sst_celsius"].values)
+    chl_arr = _squeeze_2d(ds_day["chl_mg_m3"].values)
 
     mask = ~(np.isnan(sst_arr) | np.isnan(chl_arr))
     if not mask.any():
@@ -179,24 +229,31 @@ def build_day_tree(ds_day: xr.Dataset):
     lat_idx, lon_idx = np.where(mask)
     lat_valid = lat_grid[lat_idx]
     lon_valid = lon_grid[lon_idx]
-    sst_valid = sst_arr[mask]
-    chl_valid = chl_arr[mask]
+
+    valid_arrays: dict[str, np.ndarray] = {}
+    for vname in ds_day.data_vars:
+        arr = _squeeze_2d(ds_day[vname].values)
+        if arr.shape != mask.shape:
+            # Variable con forma inesperada (no 2-D sobre lat/lon);
+            # la saltamos para no romper el cruce.
+            continue
+        valid_arrays[vname] = arr[mask]
 
     tree = cKDTree(project_xy(lat_valid, lon_valid))
-    return tree, lat_valid, lon_valid, sst_valid, chl_valid
+    return tree, lat_valid, lon_valid, valid_arrays
 
 
 def enrich_one_day(
     ships_day: pd.DataFrame, ds_day: xr.Dataset
 ) -> dict[str, np.ndarray] | None:
-    """Para todos los lances de un mismo día, devuelve los valores de las
-    columnas nuevas alineados al índice de `ships_day`. Devuelve None si
-    no hay celdas válidas ese día.
+    """Para todos los lances de un mismo día, devuelve los valores de
+    las columnas nuevas alineados al índice de `ships_day`. Devuelve
+    None si no hay celdas válidas ese día.
     """
     result = build_day_tree(ds_day)
     if result is None:
         return None
-    tree, lat_valid, lon_valid, sst_valid, chl_valid = result
+    tree, lat_valid, lon_valid, valid_arrays = result
 
     ship_xy = project_xy(
         ships_day["LATITUD_DD"].to_numpy(),
@@ -204,20 +261,26 @@ def enrich_one_day(
     )
     distances, idx = tree.query(ship_xy)
 
-    return {
+    out: dict[str, np.ndarray] = {
         "LAT_GRILLA": lat_valid[idx],
         "LON_GRILLA": lon_valid[idx],
         "DISTANCIA_KM_GRILLA": distances * DEG_TO_KM,
-        "analysed_sst_celsius": sst_valid[idx],
-        "chl_mg_m3": chl_valid[idx],
     }
+    for vname, varr in valid_arrays.items():
+        out[vname] = varr[idx]
+    return out
 
 
 def main() -> None:
     ds = load_grid_dataset()
     df = load_ships(INPUT_CSV)
 
-    for col in NEW_COLUMNS:
+    # Las columnas de valor dependen de los NetCDFs efectivamente
+    # presentes; las posicionales (LAT_GRILLA, LON_GRILLA, DISTANCIA…)
+    # son siempre las mismas.
+    value_columns = tuple(ds.data_vars)
+    new_columns = (*GRID_COLUMNS, *value_columns)
+    for col in new_columns:
         df[col] = np.nan
 
     m_coord = df["LATITUD_DD"].notna() & df["LONGITUD_DD"].notna()
@@ -234,9 +297,10 @@ def main() -> None:
     n_sin_celdas_validas = 0
     n_enriquecidas = 0
 
-    # Pre-calcular las fechas únicas presentes en el NetCDF para evitar
-    # KeyError ruidoso cuando un lance cae justo en un día que el dataset
-    # no cubre (gaps esporádicos, redownloads parciales, etc.).
+    # Pre-calcular las fechas únicas presentes en el Dataset combinado
+    # para evitar KeyError ruidoso cuando un lance cae justo en un día
+    # que no está cubierto (gaps esporádicos, redownloads parciales,
+    # cobertura distinta entre productos).
     fechas_grilla = set(
         pd.to_datetime(ds["time"].values).strftime("%Y-%m-%d").tolist()
     )
@@ -260,6 +324,7 @@ def main() -> None:
     df.to_csv(OUTPUT_CSV, sep=";", index=False)
 
     total = len(df)
+    columnas_valor_str = ", ".join(value_columns) if value_columns else "(ninguna)"
     print(
         f"Filas totales:               {total:,}\n"
         f"Filas enriquecidas:          {n_enriquecidas:,}\n"
@@ -269,6 +334,7 @@ def main() -> None:
         f"Filas fuera de rango fecha:  {n_fuera_rango:,}\n"
         f"Filas sin día en grilla:     {n_sin_fecha_grilla:,}\n"
         f"Filas sin celdas válidas:    {n_sin_celdas_validas:,}\n"
+        f"Variables agregadas:         {columnas_valor_str}\n"
         f"Archivo escrito:             {OUTPUT_CSV}"
     )
 
