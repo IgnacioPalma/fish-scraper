@@ -15,12 +15,13 @@ COPY requirements.txt /app/requirements.txt
 RUN pip install --no-cache-dir -r /app/requirements.txt
 
 # Copiar los paquetes: utils (helpers compartidos), downloads (SST/CHL),
-# filters (filtros sobre CSVs locales) y enrich (cruce de lances con SST/CHL).
-# Cada uno es un paquete Python con __init__.py, así que los scripts se
-# invocan con `python -m <paquete>.<modulo>` desde el WORKDIR /app
-# (ver docker-compose.yml).
+# cleaning (preprocesamiento de registros), filters (filtros sobre CSVs locales)
+# y enrich (cruce de lances con SST/CHL). Cada uno es un paquete Python con
+# __init__.py, así que los scripts se invocan con `python -m <paquete>.<modulo>`
+# desde el WORKDIR /app (ver docker-compose.yml).
 COPY utils/ /app/utils/
 COPY downloads/ /app/downloads/
+COPY cleaning/ /app/cleaning/
 COPY filters/ /app/filters/
 COPY enrich/ /app/enrich/
 

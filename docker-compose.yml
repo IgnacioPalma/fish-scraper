@@ -61,6 +61,13 @@ services:
         python -m downloads.download_sla &&
         python -m downloads.download_wind
 
+  # Preprocesa data/register.csv: deja sólo categoría LANCHA y conserva la
+  # inscripción más reciente por (Nº Matrícula, Puerto). Genera
+  # data/register_clean.csv. Uso: `docker compose run --rm clean_register`
+  clean_register:
+    <<: *base
+    command: ["python", "-m", "cleaning.clean_register"]
+
   # Filtra data/ships.csv a la flota Artesanal en la Región de Atacama.
   # Uso: `docker compose run --rm filter_ships`
   filter_ships:

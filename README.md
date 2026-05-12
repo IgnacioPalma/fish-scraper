@@ -59,6 +59,16 @@ La primera ejecución construye la imagen (puede tardar unos minutos). Al finali
 
 Cada script imprime un resumen con cantidad de filas, rango temporal y estadísticas básicas en las unidades correspondientes.
 
+## Limpiar el registro de embarcaciones
+
+El archivo `data/register.csv` es el registro histórico de embarcaciones de Atacama. Una misma nave aparece varias veces cuando cambia de armador (cada inscripción agrega una fila con un nuevo `Nº RPA`, pero la `Nº Matrícula` del puerto se mantiene). Para alinear el registro con los reportes diarios de VMS de Sernapesca conviene quedarse con la inscripción más reciente por embarcación y, por ahora, restringir el análisis a la categoría `LANCHA`.
+
+```bash
+docker compose run --rm clean_register
+```
+
+El script lee `data/register.csv`, filtra a `Categoría = LANCHA`, parsea `Fecha Inscripción` (`DD-MM-YYYY`) y conserva, para cada par `(Nº Matrícula, Puerto)`, la fila con la fecha más reciente. El resultado se escribe en `data/register_clean.csv` (mismo separador `;`, mismas columnas) e imprime un resumen con cuántas filas se descartaron por categoría, fecha inválida y duplicado.
+
 ## Enriquecer lances con todas las capas
 
 Una vez descargados al menos los NetCDF de SST y CHL (las demás capas son opcionales) y filtrado `data/ships_filtered.csv` (con las columnas `LATITUD_DD`, `LONGITUD_DD`, `FECHA_HORA_ZARPE_UTC`), puedes cruzar las fuentes:
@@ -170,7 +180,7 @@ En Linux puede aparecer si el usuario del contenedor no coincide con el del host
 sst_atacama/
 ├── Dockerfile             # imagen basada en python:3.11-slim
 ├── docker-compose.yml     # servicios download_{sst,chl,phy,bgc,sla,wind}, download_all,
-│                          # filter_ships, enrich_ships, jupyter
+│                          # clean_register, filter_ships, enrich_ships, jupyter
 ├── requirements.txt       # dependencias Python
 ├── utils/                 # paquete con helpers compartidos
 │   ├── __init__.py
@@ -183,6 +193,9 @@ sst_atacama/
 │   ├── download_bgc.py    # O₂ min, zooc, phyc, nppv (GLOBAL_MULTIYEAR_BGC_001_029)
 │   ├── download_sla.py    # sla, adt, ugos, vgos (SEALEVEL_GLO_PHY_L4_MY_008_047)
 │   └── download_wind.py   # vientos a 10 m (WIND_GLO_PHY_L4_MY_012_006)
+├── cleaning/              # paquete con preprocesamiento de registros
+│   ├── __init__.py
+│   └── clean_register.py  # data/register.csv → data/register_clean.csv (LANCHA, dedup)
 ├── filters/               # paquete con filtros sobre CSVs locales
 │   ├── __init__.py
 │   └── filter_ships.py    # filtra data/ships.csv (flota Artesanal, Región de Atacama)
