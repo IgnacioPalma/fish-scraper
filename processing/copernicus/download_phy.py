@@ -62,7 +62,7 @@ DEPTH_MAX = 400.0
 DEPTH_SURFACE = 0.0
 DEPTH_DEEP = 400.0
 
-OUTPUT_DIR = "/app/data"
+OUTPUT_DIR = "/app/data/copernicus"
 FILENAME_BASE = "phy_atacama"
 
 # Columnas finales del CSV (también las que se vuelcan al NetCDF

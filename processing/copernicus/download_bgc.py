@@ -69,7 +69,7 @@ DEPTH_MIN = 0.0
 DEPTH_MAX = 200.0
 DEPTH_SURFACE = 0.0
 
-OUTPUT_DIR = "/app/data"
+OUTPUT_DIR = "/app/data/copernicus"
 FILENAME_BASE = "bgc_atacama"
 
 OUTPUT_VARIABLES = {

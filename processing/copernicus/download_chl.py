@@ -44,7 +44,7 @@ PRODUCT_END_DATE = date(2026, 5, 4)
 LAT_MIN, LAT_MAX = -29.0, -25.0
 LON_MIN, LON_MAX = -72.0, -70.0
 
-OUTPUT_DIR = "/app/data"
+OUTPUT_DIR = "/app/data/copernicus"
 FILENAME_BASE = "chl_atacama"
 
 
