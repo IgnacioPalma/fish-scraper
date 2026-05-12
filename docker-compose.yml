@@ -57,6 +57,14 @@ services:
     <<: *base
     command: ["python", "-m", "processing.locations.download_locations"]
 
+  # Une los CSVs diarios de data/locations/ en un único
+  # data/locations/locations_flota_artesanal_<rango>.csv, deduplicando por
+  # (Radio Call Sign, Location date). Idempotente.
+  # Uso: `docker compose run --rm consolidate_locations`
+  consolidate_locations:
+    <<: *base
+    command: ["python", "-m", "processing.locations.consolidate_locations"]
+
   # Conveniencia: ejecuta los seis descargadores en secuencia.
   # Uso: `docker compose run --rm download_all`
   # Nota: el `&&` corta a la primera falla; los descargadores siguientes
