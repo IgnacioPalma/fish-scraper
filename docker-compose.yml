@@ -82,6 +82,14 @@ services:
     <<: *base
     command: ["python", "-m", "processing.register.clean_register"]
 
+  # Filtra data/desembarques.csv a (Atacama, Artesanal, Jurel) dentro del
+  # rango de años global (processing/utils/date_ranges.py). Genera
+  # data/landings/landings_jurel_atacama_artesanal_<rango>.csv.
+  # Uso: `docker compose run --rm filter_landings`
+  filter_landings:
+    <<: *base
+    command: ["python", "-m", "processing.landings.filter_landings"]
+
   # Servidor Jupyter para análisis posterior. Uso: `docker compose up jupyter`
   # Nota: el token está deshabilitado a propósito porque el puerto solo se publica
   # en localhost; si se expone a la red conviene reactivarlo.

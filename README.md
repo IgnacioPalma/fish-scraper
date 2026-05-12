@@ -90,6 +90,23 @@ docker compose run --rm clean_register
 
 El script lee `data/register.csv`, filtra a `Categoría = LANCHA`, parsea `Fecha Inscripción` (`DD-MM-YYYY`) y conserva, para cada par `(Nº Matrícula, Puerto)`, la fila con la fecha más reciente. El resultado se escribe en `data/register_clean.csv` (mismo separador `;`, mismas columnas) e imprime un resumen con cuántas filas se descartaron por categoría, fecha inválida y duplicado.
 
+## Filtrar desembarques (landings)
+
+`data/desembarques.csv` es la tabla mensual de desembarques de Sernapesca (~16 MB, separador `;`, codificada en latin-1). El script filtra a la combinación que usamos hoy en el análisis bayesiano:
+
+- `ano` ∈ años del rango global ([processing/utils/date_ranges.py](processing/utils/date_ranges.py))
+- `region == "Atacama"`
+- `tipo_agente == "Artesanal"`
+- `especie == "Jurel"`
+
+```bash
+docker compose run --rm filter_landings
+```
+
+El resultado se escribe en `data/landings/landings_jurel_atacama_artesanal_<rango>.csv` (mismo separador `;`, mismas columnas que la fuente, reescrito en UTF-8 para evitar problemas de encoding aguas abajo). El sufijo `<rango>` se deriva del año global: `2023` para un único año, `2023_2024` si abarca varios. El script imprime un resumen con filas totales, filas tras el filtro y toneladas totales.
+
+Para apuntar el filtro a otra combinación (otra región, otro arte, otra especie), editá las tres constantes `REGION` / `TIPO_AGENTE` / `ESPECIE` al inicio de [processing/landings/filter_landings.py](processing/landings/filter_landings.py) y reconstruí la imagen (ver `--build` en *Solución de problemas*). El filtro por año siempre viene de `date_ranges.py`.
+
 ## Iniciar Jupyter
 
 ```bash
@@ -186,7 +203,7 @@ En Linux puede aparecer si el usuario del contenedor no coincide con el del host
 sst_atacama/
 ├── Dockerfile             # imagen basada en python:3.11-slim
 ├── docker-compose.yml     # servicios download_{sst,chl,phy,bgc,sla,wind,locations},
-│                          # download_all, clean_register, jupyter
+│                          # download_all, clean_register, filter_landings, jupyter
 ├── requirements.txt       # dependencias Python
 ├── processing/            # paquete raíz con los subpaquetes de procesamiento
 │   ├── __init__.py
@@ -206,9 +223,12 @@ sst_atacama/
 │   ├── locations/         # subpaquete con el descargador VMS de Sernapesca
 │   │   ├── __init__.py
 │   │   └── download_locations.py  # CSV diarios VMS (flota artesanal)
-│   └── register/          # subpaquete con preprocesamiento del registro
+│   ├── register/          # subpaquete con preprocesamiento del registro
+│   │   ├── __init__.py
+│   │   └── clean_register.py  # data/register.csv → data/register_clean.csv (LANCHA, dedup)
+│   └── landings/          # subpaquete con filtros sobre desembarques
 │       ├── __init__.py
-│       └── clean_register.py  # data/register.csv → data/register_clean.csv (LANCHA, dedup)
+│       └── filter_landings.py # data/desembarques.csv → data/landings/landings_<filtro>_<rango>.csv
 ├── .env.example           # plantilla de credenciales (sin valores)
 ├── .env                   # credenciales reales (NO se versiona)
 ├── .gitignore
