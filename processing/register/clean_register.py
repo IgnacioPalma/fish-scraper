@@ -16,9 +16,9 @@ from pathlib import Path
 
 import pandas as pd
 
-DATA_DIR = Path(__file__).resolve().parent.parent / "data"
+DATA_DIR = Path(__file__).resolve().parent.parent.parent / "data"
 INPUT_CSV = DATA_DIR / "register.csv"
-OUTPUT_CSV = DATA_DIR / "register_clean.csv"
+OUTPUT_CSV = DATA_DIR / "register" / "register_clean.csv"
 
 CATEGORIA_VALUE = "LANCHA"
 DEDUP_KEYS = ["Nº Matrícula", "Puerto"]
