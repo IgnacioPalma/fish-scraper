@@ -2,6 +2,9 @@
 .venv/
 data/*
 !data/.gitkeep
+!data/*/
+data/*/*
+!data/*/*.md
 __pycache__/
 *.pyc
 .ipynb_checkpoints/

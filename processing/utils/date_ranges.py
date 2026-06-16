@@ -14,4 +14,4 @@ from datetime import date
 
 
 START_DATE = date(2023, 1, 1)
-END_DATE = date(2023, 12, 31)
+END_DATE = date(2024, 12, 31)
