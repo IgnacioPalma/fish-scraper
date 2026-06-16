@@ -22,7 +22,15 @@ from pathlib import Path
 import copernicusmarine
 import xarray as xr
 
-from processing.utils.cmems_common import print_summary, read_credentials, regrid_to_target
+from processing.utils.cmems_common import (
+    LAT_MAX,
+    LAT_MIN,
+    LON_MAX,
+    LON_MIN,
+    print_summary,
+    read_credentials,
+    regrid_to_target,
+)
 from processing.utils.date_ranges import END_DATE as GLOBAL_END
 from processing.utils.date_ranges import START_DATE as GLOBAL_START
 
@@ -41,9 +49,6 @@ VARIABLE = "CHL"
 # extiende la cobertura — ver README "Solución de problemas".
 PRODUCT_START_DATE = date(1997, 9, 1)
 PRODUCT_END_DATE = date(2026, 5, 4)
-
-LAT_MIN, LAT_MAX = -29.0, -25.0
-LON_MIN, LON_MAX = -72.0, -70.0
 
 OUTPUT_DIR = str(Path(__file__).resolve().parent.parent.parent / "data" / "copernicus")
 FILENAME_BASE = "chl_atacama"

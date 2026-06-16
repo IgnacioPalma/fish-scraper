@@ -52,9 +52,12 @@ import xarray as xr
 # Paso de la grilla destino: 1/24° ≈ 4 km, coincide con la grilla nativa de CHL L4
 STEP = 1 / 24
 
-# Bounding box de Atacama (mismo para SST y CHL)
-TARGET_LAT = np.arange(-29.0, -25.0 + STEP / 2, STEP)
-TARGET_LON = np.arange(-72.0, -70.0 + STEP / 2, STEP)
+# Bounding box de Atacama — fuente única de verdad para todos los descargadores.
+LAT_MIN, LAT_MAX = -29.0, -25.0
+LON_MIN, LON_MAX = -72.0, -70.0
+
+TARGET_LAT = np.arange(LAT_MIN, LAT_MAX + STEP / 2, STEP)
+TARGET_LON = np.arange(LON_MIN, LON_MAX + STEP / 2, STEP)
 
 
 def read_credentials() -> tuple[str, str]:
