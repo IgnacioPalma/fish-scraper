@@ -10,7 +10,7 @@ GLOBAL_MULTIYEAR_PHY_001_030. De ese producto extrae:
 Las dos últimas se obtienen seleccionando el nivel de profundidad más
 cercano dentro del subconjunto descargado. El resultado se regrilla a la
 grilla destino común (ver processing/utils/cmems_common.py) y se exporta como NetCDF
-y CSV en /app/data.
+y CSV en `data/copernicus/` (relativo a la raíz del proyecto).
 
 El rango temporal viene del rango global del proyecto (processing/utils/date_ranges.py),
 intersectado con la disponibilidad del producto Copernicus declarada acá
@@ -18,13 +18,14 @@ abajo (PRODUCT_START_DATE / PRODUCT_END_DATE). Si la intersección queda
 vacía, el script lo informa y termina sin descargar.
 
 Las credenciales se leen exclusivamente de las variables de entorno
-COPERNICUS_USERNAME y COPERNICUS_PASSWORD (cargadas desde .env por Compose).
+COPERNICUS_USERNAME y COPERNICUS_PASSWORD (cargadas desde .env mediante python-dotenv).
 """
 
 import os
 import sys
 import traceback
 from datetime import date
+from pathlib import Path
 
 import copernicusmarine
 import xarray as xr
@@ -62,7 +63,7 @@ DEPTH_MAX = 400.0
 DEPTH_SURFACE = 0.0
 DEPTH_DEEP = 400.0
 
-OUTPUT_DIR = "/app/data/copernicus"
+OUTPUT_DIR = str(Path(__file__).resolve().parent.parent.parent / "data" / "copernicus")
 FILENAME_BASE = "phy_atacama"
 
 # Columnas finales del CSV (también las que se vuelcan al NetCDF

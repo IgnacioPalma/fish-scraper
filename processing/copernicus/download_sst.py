@@ -2,7 +2,7 @@
 Descarga datos de Sea Surface Temperature (SST) de Copernicus Marine para la
 costa de Atacama (lat -29 a -25, lon -72 a -70), los regrilla a la grilla
 destino común (ver processing/utils/cmems_common.py) y los exporta como NetCDF y CSV en
-/app/data.
+`data/copernicus/` (relativo a la raíz del proyecto).
 
 El rango temporal viene del rango global del proyecto (processing/utils/date_ranges.py),
 intersectado con la disponibilidad del producto Copernicus declarada acá
@@ -10,13 +10,14 @@ abajo (PRODUCT_START_DATE / PRODUCT_END_DATE). Si la intersección queda
 vacía, el script lo informa y termina sin descargar.
 
 Las credenciales se leen exclusivamente de las variables de entorno
-COPERNICUS_USERNAME y COPERNICUS_PASSWORD (cargadas desde .env por Compose).
+COPERNICUS_USERNAME y COPERNICUS_PASSWORD (cargadas desde .env mediante python-dotenv).
 """
 
 import os
 import sys
 import traceback
 from datetime import date
+from pathlib import Path
 
 import copernicusmarine
 import xarray as xr
@@ -44,7 +45,7 @@ PRODUCT_END_DATE = date(2025, 12, 18)
 LAT_MIN, LAT_MAX = -29.0, -25.0
 LON_MIN, LON_MAX = -72.0, -70.0
 
-OUTPUT_DIR = "/app/data/copernicus"
+OUTPUT_DIR = str(Path(__file__).resolve().parent.parent.parent / "data" / "copernicus")
 FILENAME_BASE = "sst_atacama"
 
 

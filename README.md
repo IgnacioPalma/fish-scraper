@@ -1,4 +1,4 @@
-# SST Atacama — Descarga reproducible con Docker
+# SST Atacama — Descarga reproducible con UV
 
 ## Qué hace este proyecto
 
@@ -11,44 +11,53 @@ Este proyecto descarga datos diarios del servicio Copernicus Marine para la fran
 - **SLA** — Anomalía del nivel del mar, topografía dinámica absoluta y velocidades geostróficas u/v (diario, 0.125°).
 - **WIND** — Componentes zonal y meridional del viento a 10 m (diario tras agregación, 0.125°).
 
-Todas las capas terminan sobre la misma grilla 1/24° (≈4 km), de modo que un cruce SST↔CHL↔PHY↔BGC↔SLA↔WIND es un `pd.merge(..., on=["time", "latitude", "longitude"])` directo, sin regrillado posterior. También provee un servidor Jupyter para análisis posterior. Todo corre dentro de Docker, así que el entorno es idéntico en macOS y Windows.
+Todas las capas terminan sobre la misma grilla 1/24° (≈4 km), de modo que un cruce SST↔CHL↔PHY↔BGC↔SLA↔WIND es un `pd.merge(..., on=["time", "latitude", "longitude"])` directo, sin regrillado posterior. También provee un servidor Jupyter para análisis posterior. El entorno Python se gestiona con [uv](https://docs.astral.sh/uv/) y su lockfile (`uv.lock`), de forma que las dependencias quedan fijadas de forma reproducible.
 
 ## Requisitos previos
 
-- [Docker Desktop](https://www.docker.com/products/docker-desktop/) instalado y en ejecución (macOS o Windows).
+- [uv](https://docs.astral.sh/uv/getting-started/installation/) instalado. uv descarga e instala automáticamente Python 3.11 (ver `.python-version`) si no lo tienes.
 - Una cuenta gratuita en [Copernicus Marine](https://data.marine.copernicus.eu/register).
 - ~3–5 GB de espacio libre en disco si descargas las seis capas (SST, CHL, PHY, BGC, SLA, WIND); ~1 GB si sólo bajas SST y CHL.
 
 ## Configuración inicial
 
-1. Copia el archivo de ejemplo de credenciales:
+1. Instala las dependencias y crea el entorno virtual (`.venv/`):
+   ```bash
+   uv sync
+   ```
+2. Copia el archivo de ejemplo de credenciales:
    - **macOS / Linux:** `cp .env.example .env`
    - **Windows (PowerShell):** `copy .env.example .env`
-2. Abre `.env` con tu editor y completa tus credenciales:
+3. Abre `.env` con tu editor y completa tus credenciales:
    ```
    COPERNICUS_USERNAME=tu_usuario
    COPERNICUS_PASSWORD=tu_contraseña
    ```
-   El archivo `.env` está en `.gitignore`, no se subirá al repositorio.
+   El archivo `.env` está en `.gitignore`, no se subirá al repositorio. Se carga automáticamente en cada ejecución mediante `python-dotenv` (ver `processing/__init__.py`).
 
 ## Descargar los datos
 
-Desde la carpeta del proyecto (`sst_atacama/`) tienes un servicio por capa más uno de conveniencia:
+Desde la carpeta del proyecto (`sst_atacama/`) hay un comando por capa más una secuencia de conveniencia:
 
 ```bash
 # Capas individuales
-docker compose run --rm download_sst    # Sea Surface Temperature
-docker compose run --rm download_chl    # Chlorophyll-a
-docker compose run --rm download_phy    # MLD, salinidad superficial, temp 400 m
-docker compose run --rm download_bgc    # O₂ min 0–200 m, zooplancton, fitoplancton, NPP
-docker compose run --rm download_sla    # SLA, ADT, ugos, vgos (altimetría)
-docker compose run --rm download_wind   # vientos a 10 m (agregados a media diaria)
+uv run python -m processing.copernicus.download_sst    # Sea Surface Temperature
+uv run python -m processing.copernicus.download_chl    # Chlorophyll-a
+uv run python -m processing.copernicus.download_phy    # MLD, salinidad superficial, temp 400 m
+uv run python -m processing.copernicus.download_bgc    # O₂ min 0–200 m, zooplancton, fitoplancton, NPP
+uv run python -m processing.copernicus.download_sla    # SLA, ADT, ugos, vgos (altimetría)
+uv run python -m processing.copernicus.download_wind   # vientos a 10 m (agregados a media diaria)
 
 # Las seis en secuencia (corta a la primera falla)
-docker compose run --rm download_all
+uv run python -m processing.copernicus.download_sst && \
+uv run python -m processing.copernicus.download_chl && \
+uv run python -m processing.copernicus.download_phy && \
+uv run python -m processing.copernicus.download_bgc && \
+uv run python -m processing.copernicus.download_sla && \
+uv run python -m processing.copernicus.download_wind
 ```
 
-La primera ejecución construye la imagen (puede tardar unos minutos). Al finalizar, los archivos quedan en `./data/`, con un sufijo de año derivado del rango efectivo descargado (intersección de `START_DATE`/`END_DATE` con la disponibilidad del producto):
+Al finalizar, los archivos quedan en `./data/copernicus/`, con un sufijo de año derivado del rango efectivo descargado (intersección de `START_DATE`/`END_DATE` con la disponibilidad del producto):
 
 - `sst_atacama_<rango>.nc` / `.csv` — SST con columnas `time, latitude, longitude, analysed_sst_celsius`.
 - `chl_atacama_<rango>.nc` / `.csv` — clorofila con columnas `time, latitude, longitude, chl_mg_m3`.
@@ -66,7 +75,7 @@ Donde `<rango>` es `2023` para un único año o `2017_2022` si abarca varios. Ca
 Sernapesca publica un CSV por día con las posiciones reportadas por el VMS de la flota artesanal chilena (código de flota 31). Las columnas son las del reporte básico: nombre, indicativo de llamada, fecha/hora, latitud, longitud, rumbo y velocidad. El downloader recorre las fechas del rango global (intersección con la disponibilidad de Sernapesca, que empieza el 3 de marzo de 2019) y guarda un archivo por día en `data/locations/` con el nombre `flota_artesanal_YYYY-MM-DD.csv`.
 
 ```bash
-docker compose run --rm download_locations
+uv run python -m processing.locations.download_locations
 ```
 
 El script es idempotente: si una fecha ya está descargada se salta, así que se puede interrumpir y volver a correr sin re-descargar. No necesita credenciales (el sitio de Sernapesca es público).
@@ -76,7 +85,7 @@ Detrás de escena conviven dos patrones de URL por una migración de CMS (Drupal
 - Formato antiguo (Drupal, hasta `OLD_FORMAT_END` inclusive): `https://www.sernapesca.cl/sites/default/files/report-YYYY-MM-DD_11_45_SS-sernapesca-admin.csv`. La hora:minuto es siempre `11:45`, pero los segundos varían entre 00 y 59 — el script itera hasta dar con el archivo.
 - Formato nuevo (WordPress, desde el día siguiente a `OLD_FORMAT_END`): `https://www.sernapesca.cl/app/uploads/YYYY/MM/report_31_YYYYMMDD_flota_artesanal.csv`. Para fechas recientes la subida es del mismo mes; los archivos antiguos de la era WordPress fueron resubidos en bloque a `/BACKFILL_YEAR_MONTH/`, así que el script intenta ambos dentro de este mismo formato.
 
-El rango efectivo es la intersección del rango global ([processing/utils/date_ranges.py](processing/utils/date_ranges.py)) con la disponibilidad de Sernapesca (`EARLIEST_AVAILABLE` en `locations_common.py`). Para mover/recortar el rango temporal del proyecto editá `date_ranges.py`; para ajustar el corte de formato u otros detalles de URLs editá `locations_common.py`. En ambos casos reconstruí la imagen (ver `--build` en *Solución de problemas*).
+El rango efectivo es la intersección del rango global ([processing/utils/date_ranges.py](processing/utils/date_ranges.py)) con la disponibilidad de Sernapesca (`EARLIEST_AVAILABLE` en `locations_common.py`). Para mover/recortar el rango temporal del proyecto editá `date_ranges.py`; para ajustar el corte de formato u otros detalles de URLs editá `locations_common.py`. En ambos casos el cambio se aplica en la siguiente ejecución del script.
 
 La descarga es secuencial y educada (0,5 s entre solicitudes). Cubrir el rango completo puede tardar varias horas la primera vez, sobre todo por el formato antiguo que requiere probar múltiples timestamps por fecha. Las fechas sin archivo en el servidor (fines de semana sin publicación, caídas puntuales) se reportan como "faltantes" en el resumen final sin abortar la corrida.
 
@@ -85,7 +94,7 @@ La descarga es secuencial y educada (0,5 s entre solicitudes). Cubrir el rango c
 El archivo `data/register.csv` es el registro histórico de embarcaciones de Atacama. Una misma nave aparece varias veces cuando cambia de armador (cada inscripción agrega una fila con un nuevo `Nº RPA`, pero la `Nº Matrícula` del puerto se mantiene). Para alinear el registro con los reportes diarios de VMS de Sernapesca conviene quedarse con la inscripción más reciente por embarcación y, por ahora, restringir el análisis a la categoría `LANCHA`.
 
 ```bash
-docker compose run --rm clean_register
+uv run python -m processing.register.clean_register
 ```
 
 El script lee `data/register.csv`, filtra a `Categoría = LANCHA`, parsea `Fecha Inscripción` (`DD-MM-YYYY`) y conserva, para cada par `(Nº Matrícula, Puerto)`, la fila con la fecha más reciente. El resultado se escribe en `data/register_clean.csv` (mismo separador `;`, mismas columnas) e imprime un resumen con cuántas filas se descartaron por categoría, fecha inválida y duplicado.
@@ -100,39 +109,31 @@ El script lee `data/register.csv`, filtra a `Categoría = LANCHA`, parsea `Fecha
 - `especie == "Jurel"`
 
 ```bash
-docker compose run --rm filter_landings
+uv run python -m processing.landings.filter_landings
 ```
 
 El resultado se escribe en `data/landings/landings_jurel_atacama_artesanal_<rango>.csv` (mismo separador `;`, mismas columnas que la fuente, reescrito en UTF-8 para evitar problemas de encoding aguas abajo). El sufijo `<rango>` se deriva del año global: `2023` para un único año, `2023_2024` si abarca varios. El script imprime un resumen con filas totales, filas tras el filtro y toneladas totales.
 
-Para apuntar el filtro a otra combinación (otra región, otro arte, otra especie), editá las tres constantes `REGION` / `TIPO_AGENTE` / `ESPECIE` al inicio de [processing/landings/filter_landings.py](processing/landings/filter_landings.py) y reconstruí la imagen (ver `--build` en *Solución de problemas*). El filtro por año siempre viene de `date_ranges.py`.
+Para apuntar el filtro a otra combinación (otra región, otro arte, otra especie), editá las tres constantes `REGION` / `TIPO_AGENTE` / `ESPECIE` al inicio de [processing/landings/filter_landings.py](processing/landings/filter_landings.py); el cambio se aplica en la siguiente ejecución del script. El filtro por año siempre viene de `date_ranges.py`.
 
 ## Iniciar Jupyter
 
 ```bash
-docker compose up jupyter
+uv run jupyter notebook
 ```
 
-Luego abre [http://localhost:8888/](http://localhost:8888/) en tu navegador. La carpeta `/app/data` dentro del contenedor corresponde a `./data/` en tu máquina, así que los archivos NetCDF y CSV están disponibles directamente.
-
-> **Nota de seguridad:** el servidor Jupyter no pide token y solo escucha en `localhost`. Si lo expones a otra red, vuelve a habilitar el token en `docker-compose.yml`.
-
-## Detener los contenedores
-
-```bash
-docker compose down
-```
+Jupyter imprime una URL con token de acceso (o abre el navegador automáticamente) en [http://localhost:8888/](http://localhost:8888/). Los notebooks corren desde la raíz del proyecto, así que `data/` y `processing/` están disponibles directamente.
 
 ## Solución de problemas
 
 **Error: faltan credenciales.**
-Verifica que `.env` exista junto a `docker-compose.yml` y que las dos variables tengan valor. Recuerda que el archivo se carga al inicio del contenedor: si lo cambias, vuelve a ejecutar el comando de descarga correspondiente.
+Verifica que `.env` exista en la raíz del proyecto y que las dos variables tengan valor. El archivo se carga automáticamente (vía `python-dotenv`) en cada ejecución; si lo cambias, basta con volver a ejecutar el comando correspondiente.
 
 **Error: dataset SST no encontrado o renombrado.**
 El script usa el dataset `METOFFICE-GLO-SST-L4-REP-OBS-SST` (dentro del producto `SST_GLO_SST_L4_REP_OBSERVATIONS_010_011`). Si Copernicus lo renombra, descubre el ID actual y filtra los IDs de dataset:
 
 ```bash
-docker compose run --rm download_sst python -c "import copernicusmarine, re; out = str(copernicusmarine.describe(contains=['SST_GLO_SST_L4_REP_OBSERVATIONS_010_011'])); print('\n'.join(sorted(set(re.findall(r'METOFFICE[A-Z0-9-]+', out)))))"
+uv run python -c "import copernicusmarine, re; out = str(copernicusmarine.describe(contains=['SST_GLO_SST_L4_REP_OBSERVATIONS_010_011'])); print('\n'.join(sorted(set(re.findall(r'METOFFICE[A-Z0-9-]+', out)))))"
 ```
 
 Luego edita la constante `DATASET_ID` al inicio de `processing/copernicus/download_sst.py`.
@@ -141,7 +142,7 @@ Luego edita la constante `DATASET_ID` al inicio de `processing/copernicus/downlo
 El script usa el dataset `cmems_obs-oc_glo_bgc-plankton_my_l4-gapfree-multi-4km_P1D` (dentro del producto `OCEANCOLOUR_GLO_BGC_L4_MY_009_104`). Los nombres de dataset cambiaron en la migración de plataforma de Copernicus en 2024 y podrían volver a cambiar. Si esto pasa:
 
 ```bash
-docker compose run --rm download_chl python -c "import copernicusmarine, re; out = str(copernicusmarine.describe(contains=['OCEANCOLOUR_GLO_BGC_L4_MY_009_104'])); print('\n'.join(sorted(set(re.findall(r'cmems_obs-oc_glo_bgc-plankton[a-z0-9_-]+', out)))))"
+uv run python -c "import copernicusmarine, re; out = str(copernicusmarine.describe(contains=['OCEANCOLOUR_GLO_BGC_L4_MY_009_104'])); print('\n'.join(sorted(set(re.findall(r'cmems_obs-oc_glo_bgc-plankton[a-z0-9_-]+', out)))))"
 ```
 
 Esto imprime todos los datasets de plancton dentro del producto. Elige el que termine en `_P1D` (diario) y contenga `gapfree-multi-4km` (gap-filled, 4 km, multi-sensor). Luego edita la constante `DATASET_ID` al inicio de `processing/copernicus/download_chl.py`.
@@ -150,7 +151,7 @@ Esto imprime todos los datasets de plancton dentro del producto. Elige el que te
 El script usa `cmems_mod_glo_phy_my_0.083deg_P1D-m` dentro del producto `GLOBAL_MULTIYEAR_PHY_001_030` (Mercator GLORYS12, diario, 1/12°). Para descubrir el ID actual:
 
 ```bash
-docker compose run --rm download_phy python -c "import copernicusmarine, re; out = str(copernicusmarine.describe(contains=['GLOBAL_MULTIYEAR_PHY_001_030'])); print('\n'.join(sorted(set(re.findall(r'cmems_mod_glo_phy[A-Za-z0-9_.-]+', out)))))"
+uv run python -c "import copernicusmarine, re; out = str(copernicusmarine.describe(contains=['GLOBAL_MULTIYEAR_PHY_001_030'])); print('\n'.join(sorted(set(re.findall(r'cmems_mod_glo_phy[A-Za-z0-9_.-]+', out)))))"
 ```
 
 Elige el que termine en `_P1D-m` (medias diarias). Luego edita `DATASET_ID` en `processing/copernicus/download_phy.py`.
@@ -159,7 +160,7 @@ Elige el que termine en `_P1D-m` (medias diarias). Luego edita `DATASET_ID` en `
 El script usa `cmems_mod_glo_bgc_my_0.25deg_P1D-m` dentro del producto `GLOBAL_MULTIYEAR_BGC_001_029`. Es un único dataset diario que expone {chl, no3, nppv, o2, po4, si} — **no incluye `phyc` ni `zooc`**, así que el script sólo extrae `o2` (reducido a `o2_min_0_200m`) y `nppv`. Para descubrir el ID actual:
 
 ```bash
-docker compose run --rm download_bgc python -c "import copernicusmarine, re; out = str(copernicusmarine.describe(contains=['GLOBAL_MULTIYEAR_BGC_001_029'])); print('\n'.join(sorted(set(re.findall(r'cmems_mod_glo_bgc[A-Za-z0-9_.-]+', out)))))"
+uv run python -c "import copernicusmarine, re; out = str(copernicusmarine.describe(contains=['GLOBAL_MULTIYEAR_BGC_001_029'])); print('\n'.join(sorted(set(re.findall(r'cmems_mod_glo_bgc[A-Za-z0-9_.-]+', out)))))"
 ```
 
 Elige el que termine en `_P1D-m`. Luego edita `DATASET_ID` en `processing/copernicus/download_bgc.py`. Si necesitas otra variable del listado (`chl`, `no3`, `po4`, `si`), agrégala a `VARIABLES` y al dict `OUTPUT_VARIABLES`.
@@ -168,7 +169,7 @@ Elige el que termine en `_P1D-m`. Luego edita `DATASET_ID` en `processing/copern
 El script usa `cmems_obs-sl_glo_phy-ssh_my_allsat-l4-duacs-0.125deg_P1D` dentro del producto `SEALEVEL_GLO_PHY_L4_MY_008_047`. Para descubrir el ID actual:
 
 ```bash
-docker compose run --rm download_sla python -c "import copernicusmarine, re; out = str(copernicusmarine.describe(contains=['SEALEVEL_GLO_PHY_L4_MY_008_047'])); print('\n'.join(sorted(set(re.findall(r'cmems_obs-sl_glo_phy[A-Za-z0-9_.-]+', out)))))"
+uv run python -c "import copernicusmarine, re; out = str(copernicusmarine.describe(contains=['SEALEVEL_GLO_PHY_L4_MY_008_047'])); print('\n'.join(sorted(set(re.findall(r'cmems_obs-sl_glo_phy[A-Za-z0-9_.-]+', out)))))"
 ```
 
 Elige el que contenga `allsat-l4-duacs` y termine en `_P1D`. Luego edita `DATASET_ID` en `processing/copernicus/download_sla.py`.
@@ -177,36 +178,23 @@ Elige el que contenga `allsat-l4-duacs` y termine en `_P1D`. Luego edita `DATASE
 El script usa `cmems_obs-wind_glo_phy_my_l4_0.125deg_PT1H` dentro del producto `WIND_GLO_PHY_L4_MY_012_006`. Para descubrir el ID actual:
 
 ```bash
-docker compose run --rm download_wind python -c "import copernicusmarine, re; out = str(copernicusmarine.describe(contains=['WIND_GLO_PHY_L4_MY_012_006'])); print('\n'.join(sorted(set(re.findall(r'cmems_obs-wind_glo_phy[A-Za-z0-9_.-]+', out)))))"
+uv run python -c "import copernicusmarine, re; out = str(copernicusmarine.describe(contains=['WIND_GLO_PHY_L4_MY_012_006'])); print('\n'.join(sorted(set(re.findall(r'cmems_obs-wind_glo_phy[A-Za-z0-9_.-]+', out)))))"
 ```
 
 Si Copernicus publica un dataset ya pre-agregado a paso diario (`_P1D` en lugar de `_PT1H`), conviene usarlo: ahorra ~24× espacio en disco. Si lo eliges, edita `DATASET_ID` en `processing/copernicus/download_wind.py` y borra/comenta la línea `ds.resample(time="1D").mean()` en `regrid_and_export`.
 
-**Editaste código bajo `processing/` y los cambios no aparecen.**
-Ese paquete se *copia* dentro de la imagen al construirla (ver [Dockerfile](Dockerfile)), no se montan como volumen. Si editás un script en el host y volvés a correr el servicio sin reconstruir, Docker reusa la imagen vieja y nada cambia (típicamente se ve como "el script corrió pero no descargó nada y no hubo logs"). Solución: agregá `--build` al comando, que reconstruye la imagen antes de correr el servicio:
-
-```bash
-docker compose run --rm --build download_locations
-```
-
-Solo es necesario tras editar código; los cambios en `data/` ya son visibles porque sí es un volumen montado.
-
 **Saltos de línea en Windows.**
 Si editas `.env` o `download_sst.py` con un editor que guarda en formato CRLF, normalmente no hay problema porque Python tolera ambos formatos. Si aparece algún error raro, configura tu editor (VS Code, Notepad++) para guardar en LF.
-
-**Permiso denegado al escribir en `data/`.**
-En Linux puede aparecer si el usuario del contenedor no coincide con el del host. En macOS y Windows con Docker Desktop esto no debería ocurrir; si pasa, ejecuta `chmod -R u+w data/`.
 
 ## Estructura del proyecto
 
 ```
 sst_atacama/
-├── Dockerfile             # imagen basada en python:3.11-slim
-├── docker-compose.yml     # servicios download_{sst,chl,phy,bgc,sla,wind,locations},
-│                          # download_all, clean_register, filter_landings, jupyter
-├── requirements.txt       # dependencias Python
+├── pyproject.toml         # dependencias Python (uv)
+├── uv.lock                 # lockfile de dependencias (uv)
+├── .python-version         # versión de Python fijada para uv (3.11)
 ├── processing/            # paquete raíz con los subpaquetes de procesamiento
-│   ├── __init__.py
+│   ├── __init__.py        # carga .env vía python-dotenv
 │   ├── utils/             # subpaquete con helpers compartidos
 │   │   ├── __init__.py
 │   │   ├── cmems_common.py    # credenciales + grilla destino unificada + resumen
@@ -233,10 +221,11 @@ sst_atacama/
 ├── .env                   # credenciales reales (NO se versiona)
 ├── .gitignore
 ├── README.md
-└── data/                  # archivos generados (montado como volumen)
+└── data/                  # archivos generados
 ```
 
-> Los `.py` se ejecutan con `python -m processing.<subpaquete>.<modulo>`
-> desde `/app` (ya configurado en `docker-compose.yml`); así el
+> Los `.py` se ejecutan con `uv run python -m processing.<subpaquete>.<modulo>`
+> desde la raíz del proyecto; uv crea/activa automáticamente el entorno
+> virtual (`.venv/`) según `pyproject.toml`/`uv.lock`, y el
 > `from processing.utils.cmems_common import …` de los descargadores
 > resuelve sin trucos de `sys.path`.

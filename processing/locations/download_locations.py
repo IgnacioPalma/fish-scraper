@@ -1,11 +1,11 @@
 """
 Descarga los reportes diarios VMS de Sernapesca (flota artesanal, código 31)
-y los guarda como un CSV por día en /app/data/locations.
+y los guarda como un CSV por día en data/locations/ (relativo a la raíz del proyecto).
 
 - El rango GLOBAL de fechas viene de processing/utils/date_ranges.py (variables
   START_DATE y END_DATE). Se aplica a todo el proyecto.
 - Las constantes específicas del formato Sernapesca (URLs, código de flota,
-  límite Drupal↔WordPress, backfill) viven en processing/utils/locations_common.py.
+  límite Drupal↔WordPress, backfill) viven  en processing/utils/locations_common.py.
 
 El script intersecta el rango global con cada era de formato. Cada fecha
 queda en EXACTAMENTE un formato (sin fallback cruzado entre Drupal y
@@ -40,7 +40,7 @@ from processing.utils.locations_common import (
 )
 
 
-OUTPUT_DIR = Path("/app/data/locations")
+OUTPUT_DIR = Path(__file__).resolve().parent.parent.parent / "data" / "locations"
 
 REQUEST_TIMEOUT = 30        # segundos por solicitud HTTP
 REQUEST_DELAY = 0.5         # segundos entre solicitudes que tocan la red

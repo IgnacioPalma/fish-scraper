@@ -19,13 +19,14 @@ abajo (PRODUCT_START_DATE / PRODUCT_END_DATE). Si la intersección queda
 vacía, el script lo informa y termina sin descargar.
 
 Las credenciales se leen exclusivamente de las variables de entorno
-COPERNICUS_USERNAME y COPERNICUS_PASSWORD (cargadas desde .env por Compose).
+COPERNICUS_USERNAME y COPERNICUS_PASSWORD (cargadas desde .env mediante python-dotenv).
 """
 
 import os
 import sys
 import traceback
 from datetime import date
+from pathlib import Path
 
 import copernicusmarine
 import xarray as xr
@@ -52,7 +53,7 @@ PRODUCT_END_DATE = date(2026, 1, 21)
 LAT_MIN, LAT_MAX = -29.0, -25.0
 LON_MIN, LON_MAX = -72.0, -70.0
 
-OUTPUT_DIR = "/app/data/copernicus"
+OUTPUT_DIR = str(Path(__file__).resolve().parent.parent.parent / "data" / "copernicus")
 FILENAME_BASE = "wind_atacama"
 
 OUTPUT_VARIABLES = {

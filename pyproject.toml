@@ -1,0 +1,15 @@
+[project]
+name = "sst-atacama"
+version = "0.1.0"
+description = "Descarga y preprocesamiento de datos oceanográficos y pesqueros para la costa de Atacama"
+requires-python = ">=3.11"
+dependencies = [
+    "copernicusmarine>=2.0,<3",
+    "xarray>=2024.0",
+    "pandas>=2.0",
+    "netCDF4>=1.6",
+    "scipy>=1.11",
+    "jupyter>=1.0",
+    "matplotlib>=3.8",
+    "python-dotenv>=1.0",
+]

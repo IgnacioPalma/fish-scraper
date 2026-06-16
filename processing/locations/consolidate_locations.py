@@ -2,7 +2,7 @@
 Une los CSVs diarios VMS de Sernapesca (uno por día, escritos por
 processing.locations.download_locations) en un único CSV consolidado.
 
-Lee /app/data/locations/flota_artesanal_YYYY-MM-DD.csv para todas las fechas
+Lee data/locations/flota_artesanal_YYYY-MM-DD.csv (relativo a la raíz del proyecto) para todas las fechas
 disponibles, concatena en orden cronológico y deduplica por
 (Radio Call Sign (RC), Location date). Los reportes diarios de Sernapesca se
 solapan en los bordes —el archivo del día N suele contener pings cuya
@@ -17,7 +17,7 @@ fuera de REQUIRED_COLS y se saltan con un aviso en stderr — el día queda
 sin cubrir en el CSV consolidado, pero el archivo diario crudo sigue
 disponible en disco si en el futuro se decide normalizarlo a mano.
 
-Salida: /app/data/locations/locations_flota_artesanal_<rango>.csv, con el
+Salida: data/locations/locations_flota_artesanal_<rango>.csv, con el
 mismo separador (`;`) y encoding UTF-8.
 
 Idempotente: reescribe el archivo de salida en cada corrida.
@@ -32,7 +32,7 @@ from processing.utils.date_ranges import END_DATE, START_DATE
 from processing.utils.locations_common import FLEET_NAME
 
 
-INPUT_DIR = Path("/app/data/locations")
+INPUT_DIR = Path(__file__).resolve().parent.parent.parent / "data" / "locations"
 OUTPUT_DIR = INPUT_DIR
 
 DEDUP_KEYS = ["Radio Call Sign (RC)", "Location date"]
