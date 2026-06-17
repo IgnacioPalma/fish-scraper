@@ -3,7 +3,7 @@ Normaliza data/bitacora.csv (bitácora IFOP) y escribe el resultado a
 data/bitacora/bitacora_full.csv.
 
 Transformaciones aplicadas:
-  - COD_BARCO (RPA en hexadecimal) → columna RPA en decimal.
+  - COD_BARCO se conserva tal cual (código interno asignado por IFOP, no hex).
   - LATITUD / LONGITUD (formato DDMMSS entero) → grados decimales, luego se
     asigna el puerto más cercano según processing/bitacora/puertos_atacama.json
     (columna PUERTO). Las columnas de coordenadas se eliminan del output.
@@ -36,6 +36,7 @@ REQUIRED_COLS = ["COD_BARCO", "FECHA_HORA_RECALADA", "LATITUD", "LONGITUD", "REG
 COLUMN_RENAME = {
     "AÑO":               "YEAR",
     "REGION":            "REGION",
+    "COD_BARCO":         "COD_BARCO",
     "FECHA_HORA_RECALADA": "LANDING_DATETIME",
     "PUERTO":            "PORT",
     "AGUJILLA;PUNTO FIJO": "NEEDLEFISH",
@@ -94,6 +95,11 @@ def main() -> None:
     df = pd.read_csv(INPUT_CSV, sep=",", encoding="latin-1")
     total = len(df)
 
+    # El header trae la "Ñ" de "AÑO" corrompida como carácter de reemplazo
+    # (bytes EF BF BD = U+FFFD), que al leer en latin-1 aparece como "ï¿½".
+    # Normalizamos para que las referencias a "AÑO" funcionen.
+    df.columns = [c.replace("�", "Ñ").replace("ï¿½", "Ñ") for c in df.columns]
+
     faltantes = [c for c in REQUIRED_COLS if c not in df.columns]
     if faltantes:
         print(
@@ -111,17 +117,8 @@ def main() -> None:
     df["AÑO"] = df["AÑO"].astype(int)
     df["REGION"] = df["REGION"].astype(int)
 
-    # COD_BARCO (hex) → RPA (decimal).
+    # COD_BARCO: código interno de embarcación asignado por IFOP (no es hex).
     df["COD_BARCO"] = df["COD_BARCO"].astype(str).str.strip()
-    try:
-        df["RPA"] = df["COD_BARCO"].apply(lambda x: int(x, 16))
-    except ValueError as exc:
-        print(
-            f"ERROR: COD_BARCO contiene valores no hexadecimales: {exc}.",
-            file=sys.stderr,
-        )
-        sys.exit(2)
-    df = df.drop(columns=["COD_BARCO"])
 
     # Fecha: M/D/YYYY HH:MM → ISO YYYY-MM-DD HH:MM.
     dt = pd.to_datetime(df["FECHA_HORA_RECALADA"], format="%m/%d/%Y %H:%M", errors="coerce")
@@ -139,7 +136,7 @@ def main() -> None:
     df = df.drop(columns=["LATITUD", "LONGITUD"])
 
     # Reordenar antes de renombrar (usando nombres originales como referencia).
-    front = ["AÑO", "REGION", "RPA", "FECHA_HORA_RECALADA", "PUERTO"]
+    front = ["AÑO", "REGION", "COD_BARCO", "FECHA_HORA_RECALADA", "PUERTO"]
     cols = front + [c for c in df.columns if c not in front]
     df = df[cols]
 
