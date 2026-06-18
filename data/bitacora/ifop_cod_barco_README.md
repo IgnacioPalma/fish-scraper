@@ -104,10 +104,30 @@ constante global, pero la muestra está dominada por una sola flota.
 
 ---
 
+## El registro como ficha central
+
+`processing/register/enrich_register_ifop.py` aplica la fórmula para añadir
+`IFOP_ID` y `COD_BARCO` a `data/register/register_clean.csv`, cruzando por
+nombre contra el SIEM. Así el registro enlaza `Nº RPA ↔ nombre ↔ IFOP_ID ↔
+COD_BARCO` en una sola tabla. Notas del cruce:
+
+- **Cobertura**: solo embarcaciones cuyo nombre aparece en el SIEM (42 de 204
+  en la corrida actual). De esos `COD_BARCO`, 30 ya existen en
+  `bitacora_full.csv`/`backup.csv` — confirmación independiente de la fórmula.
+- **Homónimos**: el registro histórico reinscribe nombres (ej. tres
+  "FORTUNA I"). El IFOP_ID es de un solo casco, así que se asigna a la
+  inscripción más reciente; los homónimos antiguos quedan en blanco.
+- La enriquecimiento, al derivar `COD_BARCO` desde el IFOP_ID propio de cada
+  barco, corrige el único falso positivo del cruce temporal (EL PATO, ver
+  arriba): le asigna su código real `E66A7` en vez del vecino `E5B98`.
+
 ## Archivos relacionados
 
 - `processing/bitacora/match_ifop_names.py` — parseo SIEM + cruce temporal que
   originó los pares de validación.
+- `processing/register/enrich_register_ifop.py` — aplica la fórmula al registro.
+- `data/register/register_clean.csv` — ficha central
+  `Nº RPA ↔ nombre ↔ IFOP_ID ↔ COD_BARCO`.
 - `data/bitacora/ifop_cod_barco_lookup.csv` — tabla
   `nombre ↔ id_interno ↔ COD_BARCO` con confianza.
 - `data/bitacora/ifop_siem/` — exportaciones HTML del SIEM Electrónico IFOP.
