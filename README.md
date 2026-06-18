@@ -115,6 +115,22 @@ uv run python -m processing.registry.ifop_matching.match_ifop_vessels
 
 El emparejamiento normaliza los nombres y usa coincidencia difusa (`difflib`, corte `FUZZY_CUTOFF = 0.85`) con un **guardia de sufijo**: si ambos nombres terminan en un ordinal distinto (romano o dígito) se rechaza el par, porque `ROCIO I` y `ROCIO III` son cascos distintos; el caso sufijo-opcional (`DANIELA ANDREA` ≈ `DANIELA ANDREA I`) sí se acepta. La salida `data/processing/registry/ifop_matched/register.csv` conserva **solo** las embarcaciones del registro con par en IFOP, añadiendo `vessel_code` y `cod_barco` junto a `vessel_name`. Si varias filas del registro (homónimos / reinscripciones, p. ej. tres `FORTUNA I`) colapsan en un mismo casco IFOP, **se descartan todas**: no se puede asignar con precisión cuál es la embarcación, así que la salida queda con un `vessel_code` único por fila. El script imprime las coincidencias difusas aceptadas, las rechazadas por el guardia de sufijo y los cascos descartados por colapso, para revisión manual.
 
+El cuarto paso consulta el Registro Público de Sernapesca (por `Nº RPA`) para añadir la señal de llamada y el arte de pesca con que cada nave captura JUREL:
+
+```bash
+uv run python -m processing.registry.fishing_types.scrape_fishing_types
+```
+
+Para cada embarcación de `ifop_matched/register.csv` extrae la `Señal Distintiva` (`signal_code`, en dígitos puros, sin prefijo `CA`/`CB`) y los métodos de captura autorizados para JUREL (`CERCO`, `ENMALLE`, …). Produce dos archivos en `data/processing/registry/fishing_types/`: `fishing_types.csv` (catálogo de artes de JUREL, cada uno con un `fishing_type_id` numérico) y `register.csv` (las columnas de ifop_matched más `signal_code` y `jurel_fishing_type_ids`, los ids del catálogo separados por `|` si la nave usa más de un arte). El scraping es idempotente: cachea cada RPA en `raw_scrape.csv` y reanuda los que falten.
+
+El último paso produce el registro final: la flota de **cerco exclusivo con señal de llamada**.
+
+```bash
+uv run python -m processing.registry.cerco_filter.filter_cerco
+```
+
+Conserva las embarcaciones cuyo único arte de JUREL es `CERCO` (id leído de `fishing_types.csv`) y que tienen `signal_code` no vacío, y escribe el producto final en `data/processing/registry/register.csv` (mismas columnas que el paso anterior).
+
 ## Filtrar desembarques (landings)
 
 `data/desembarques.csv` es la tabla mensual de desembarques de Sernapesca (~16 MB, separador `;`, codificada en latin-1). El script filtra a la combinación que usamos hoy en el análisis bayesiano:
@@ -233,8 +249,12 @@ sst_atacama/
 │   │   │   └── clean_register.py  # input/register.csv → cleaned/register.csv
 │   │   ├── filter/        # filtra por categoría LANCHA
 │   │   │   └── filter_register.py  # cleaned/register.csv → filtered/register.csv
-│   │   └── ifop_matching/ # cruza por nombre con el catálogo IFOP (difuso)
-│   │       └── match_ifop_vessels.py  # filtered/register.csv → ifop_matched/register.csv
+│   │   ├── ifop_matching/ # cruza por nombre con el catálogo IFOP (difuso)
+│   │   │   └── match_ifop_vessels.py  # filtered/register.csv → ifop_matched/register.csv
+│   │   ├── fishing_types/ # scrapea Sernapesca: señal + arte de JUREL por RPA
+│   │   │   └── scrape_fishing_types.py  # ifop_matched/register.csv → fishing_types/{register,fishing_types}.csv
+│   │   └── cerco_filter/  # registro final: cerco exclusivo + señal de llamada
+│   │       └── filter_cerco.py  # fishing_types/register.csv → registry/register.csv
 │   └── landings/          # subpaquete con filtros sobre desembarques
 │       ├── __init__.py
 │       └── filter_landings.py # data/desembarques.csv → data/landings/landings_<filtro>_<rango>.csv
