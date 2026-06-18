@@ -106,8 +106,8 @@ constante global, pero la muestra está dominada por una sola flota.
 
 ## El registro como ficha central
 
-`processing/register/enrich_register_ifop.py` aplica la fórmula para añadir
-`IFOP_ID` y `COD_BARCO` a `data/register/register_clean.csv`, cruzando por
+`processing/registry/enrich_register_ifop.py` aplica la fórmula para añadir
+`IFOP_ID` y `COD_BARCO` a `data/processing/registry/register_clean.csv`, cruzando por
 nombre contra el SIEM. Así el registro enlaza `Nº RPA ↔ nombre ↔ IFOP_ID ↔
 COD_BARCO` en una sola tabla. Notas del cruce:
 
@@ -125,8 +125,8 @@ COD_BARCO` en una sola tabla. Notas del cruce:
 
 - `processing/bitacora/match_ifop_names.py` — parseo SIEM + cruce temporal que
   originó los pares de validación.
-- `processing/register/enrich_register_ifop.py` — aplica la fórmula al registro.
-- `data/register/register_clean.csv` — ficha central
+- `processing/registry/enrich_register_ifop.py` — aplica la fórmula al registro.
+- `data/processing/registry/register_clean.csv` — ficha central
   `Nº RPA ↔ nombre ↔ IFOP_ID ↔ COD_BARCO`.
 - `data/bitacora/ifop_cod_barco_lookup.csv` — tabla
   `nombre ↔ id_interno ↔ COD_BARCO` con confianza.

@@ -1,8 +1,8 @@
 """
-Filtra data/register/register_clean.csv a las embarcaciones cuyo Nº RPA
+Filtra data/processing/registry/register_clean.csv a las embarcaciones cuyo Nº RPA
 aparece en data/bitacora/bitacora_caldera_jurel.csv.
 
-El resultado se escribe a data/register/register_caldera_jurel.csv
+El resultado se escribe a data/processing/registry/register_caldera_jurel.csv
 preservando el separador (`;`) y todas las columnas del registro fuente.
 """
 
@@ -14,8 +14,8 @@ import pandas as pd
 
 DATA_DIR = Path(__file__).resolve().parent.parent.parent / "data"
 BITACORA_CSV = DATA_DIR / "bitacora" / "bitacora_caldera_jurel.csv"
-REGISTER_CSV = DATA_DIR / "register" / "register_clean.csv"
-OUTPUT_CSV = DATA_DIR / "register" / "register_caldera_jurel.csv"
+REGISTER_CSV = DATA_DIR / "processing" / "registry" / "register_clean.csv"
+OUTPUT_CSV = DATA_DIR / "processing" / "registry" / "register_caldera_jurel.csv"
 
 BITACORA_RPA_COL = "RPA"
 REGISTER_RPA_COL = "Nº RPA"

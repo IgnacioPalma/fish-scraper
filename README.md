@@ -91,13 +91,13 @@ La descarga es secuencial y educada (0,5 s entre solicitudes). Cubrir el rango c
 
 ## Limpiar el registro de embarcaciones
 
-El archivo `data/register.csv` es el registro histórico de embarcaciones de Atacama. Una misma nave aparece varias veces cuando cambia de armador (cada inscripción agrega una fila con un nuevo `Nº RPA`, pero la `Nº Matrícula` del puerto se mantiene). Para alinear el registro con los reportes diarios de VMS de Sernapesca conviene quedarse con la inscripción más reciente por embarcación y, por ahora, restringir el análisis a la categoría `LANCHA`.
+El archivo `data/processing/registry/input/register.csv` es el registro histórico de embarcaciones de Atacama. Una misma nave aparece varias veces cuando cambia de armador (cada inscripción agrega una fila con un nuevo `Nº RPA`, pero la `Nº Matrícula` del puerto se mantiene). Para alinear el registro con los reportes diarios de VMS de Sernapesca conviene quedarse con la inscripción más reciente por embarcación y, por ahora, restringir el análisis a la categoría `LANCHA`.
 
 ```bash
-uv run python -m processing.register.clean_register
+uv run python -m processing.registry.clean_register
 ```
 
-El script lee `data/register.csv`, filtra a `Categoría = LANCHA`, parsea `Fecha Inscripción` (`DD-MM-YYYY`) y conserva, para cada par `(Nº Matrícula, Puerto)`, la fila con la fecha más reciente. El resultado se escribe en `data/register_clean.csv` (mismo separador `;`, mismas columnas) e imprime un resumen con cuántas filas se descartaron por categoría, fecha inválida y duplicado.
+El script lee `data/processing/registry/input/register.csv`, filtra a `Categoría = LANCHA`, parsea `Fecha Inscripción` (`DD-MM-YYYY`) y conserva, para cada par `(Nº Matrícula, Puerto)`, la fila con la fecha más reciente. El resultado se escribe en `data/processing/registry/register_clean.csv` (mismo separador `;`, mismas columnas) e imprime un resumen con cuántas filas se descartaron por categoría, fecha inválida y duplicado.
 
 ## Filtrar desembarques (landings)
 
@@ -211,9 +211,9 @@ sst_atacama/
 │   ├── locations/         # subpaquete con el descargador VMS de Sernapesca
 │   │   ├── __init__.py
 │   │   └── download_locations.py  # CSV diarios VMS (flota artesanal)
-│   ├── register/          # subpaquete con preprocesamiento del registro
+│   ├── registry/          # subpaquete con preprocesamiento del registro
 │   │   ├── __init__.py
-│   │   └── clean_register.py  # data/register.csv → data/register_clean.csv (LANCHA, dedup)
+│   │   └── clean_register.py  # data/processing/registry/input/register.csv → data/processing/registry/register_clean.csv (LANCHA, dedup)
 │   └── landings/          # subpaquete con filtros sobre desembarques
 │       ├── __init__.py
 │       └── filter_landings.py # data/desembarques.csv → data/landings/landings_<filtro>_<rango>.csv

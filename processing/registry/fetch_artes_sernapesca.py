@@ -2,7 +2,7 @@
 Enriquece el registro de embarcaciones con el ARTE / MÉTODO DE CAPTURA con que
 cada nave está inscrita en el Registro Pesquero Artesanal (RPA) de Sernapesca.
 
-El registro limpio (data/register/register_clean.csv) NO trae el arte de pesca:
+El registro limpio (data/processing/registry/register_clean.csv) NO trae el arte de pesca:
 "Categoría = LANCHA" es una clase de tamaño, no un arte. El arte vive en el
 registro público de embarcaciones de Sernapesca, donde cada nave tiene una lista
 de pesquerías autorizadas, una fila por par (Método de Captura × Especie).
@@ -20,7 +20,7 @@ estado en sesión, no un simple GET):
 De la ficha se extrae el conjunto de artes (todas las pesquerías) y el
 subconjunto de artes autorizados específicamente para JUREL.
 
-Salida: data/register/register_artes.csv (delimitador ';'). Idempotente: si el
+Salida: data/processing/registry/register_artes.csv (delimitador ';'). Idempotente: si el
 CSV ya existe, sólo consulta los RPA que falten y reanuda.
 """
 
@@ -36,8 +36,8 @@ from pathlib import Path
 import pandas as pd
 
 DATA_DIR = Path(__file__).resolve().parent.parent.parent / "data"
-INPUT_CSV = DATA_DIR / "register" / "register_clean.csv"
-OUTPUT_CSV = DATA_DIR / "register" / "register_artes.csv"
+INPUT_CSV = DATA_DIR / "processing" / "registry" / "register_clean.csv"
+OUTPUT_CSV = DATA_DIR / "processing" / "registry" / "register_artes.csv"
 
 BASE = "https://registropublico.sernapesca.cl"
 INDEX_URL = f"{BASE}/reportes/regembarcaciones_publico/index.php"

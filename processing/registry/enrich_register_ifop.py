@@ -1,5 +1,5 @@
 """
-Enriquece data/register/register_clean.csv con dos columnas que convierten al
+Enriquece data/processing/registry/register_clean.csv con dos columnas que convierten al
 registro en la ficha central de cada embarcación:
 
   - IFOP_ID   : "Cód. Barco" decimal interno de IFOP (desde el SIEM Electrónico)
@@ -22,8 +22,8 @@ Limitaciones inherentes al cruce por nombre:
 El script es idempotente: si las columnas ya existen, las recalcula.
 
 Uso:
-    uv run python -m processing.register.clean_register        # genera el base
-    uv run python -m processing.register.enrich_register_ifop  # añade columnas
+    uv run python -m processing.registry.clean_register        # genera el base
+    uv run python -m processing.registry.enrich_register_ifop  # añade columnas
 """
 
 import re
@@ -36,7 +36,7 @@ import pandas as pd
 from processing.bitacora.match_ifop_names import _leer_viajes_ifop
 
 DATA_DIR     = Path(__file__).resolve().parent.parent.parent / "data"
-REGISTER_CSV = DATA_DIR / "register" / "register_clean.csv"
+REGISTER_CSV = DATA_DIR / "processing" / "registry" / "register_clean.csv"
 BITACORA_CSV = DATA_DIR / "bitacora" / "bitacora_full.csv"
 BACKUP_CSV   = DATA_DIR / "backup.csv"
 
@@ -95,7 +95,7 @@ def main() -> None:
     if not REGISTER_CSV.exists():
         print(
             f"ERROR: no se encontró {REGISTER_CSV}.\n"
-            "       Ejecutá primero: uv run python -m processing.register.clean_register",
+            "       Ejecutá primero: uv run python -m processing.registry.clean_register",
             file=sys.stderr,
         )
         sys.exit(2)

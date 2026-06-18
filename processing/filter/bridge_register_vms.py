@@ -1,13 +1,13 @@
 """
 Construye una tabla de correspondencia entre los nombres de embarcaciones del
 VMS (data/filter/vms_near_caldera.csv) y el registro oficial de embarcaciones
-(data/register/register_clean.csv).
+(data/processing/registry/register_clean.csv).
 
 El emparejamiento usa normalización de nombres (supresión de sufijos de flota)
 seguida de coincidencia difusa con difflib.
 
 Entrada: data/filter/vms_near_caldera.csv
-         data/register/register_clean.csv
+         data/processing/registry/register_clean.csv
 Salida:  data/filter/register_vms_bridge.csv
 """
 
@@ -22,7 +22,7 @@ import pandas as pd
 
 DATA_DIR     = Path(__file__).resolve().parent.parent.parent / "data"
 VMS_CSV      = DATA_DIR / "filter" / "vms_near_caldera.csv"
-REGISTER_CSV = DATA_DIR / "register" / "register_clean.csv"
+REGISTER_CSV = DATA_DIR / "processing" / "registry" / "register_clean.csv"
 OUTPUT_CSV   = DATA_DIR / "filter" / "register_vms_bridge.csv"
 
 FUZZY_CUTOFF = 0.80

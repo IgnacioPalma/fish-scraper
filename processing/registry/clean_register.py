@@ -1,8 +1,8 @@
 """
-Preprocesa data/register.csv: deja sólo embarcaciones de categoría LANCHA y,
-para cada combinación (Nº Matrícula, Puerto), conserva la inscripción más
-reciente según `Fecha Inscripción`. El resultado se escribe en
-data/register_clean.csv.
+Preprocesa data/processing/registry/input/register.csv: deja sólo embarcaciones
+de categoría LANCHA y, para cada combinación (Nº Matrícula, Puerto), conserva la
+inscripción más reciente según `Fecha Inscripción`. El resultado se escribe en
+data/processing/registry/register_clean.csv.
 
 El registro histórico añade una nueva fila cada vez que una embarcación
 cambia de armador (con un nuevo `Nº RPA`); la matrícula del puerto en
@@ -17,8 +17,9 @@ from pathlib import Path
 import pandas as pd
 
 DATA_DIR = Path(__file__).resolve().parent.parent.parent / "data"
-INPUT_CSV = DATA_DIR / "register.csv"
-OUTPUT_CSV = DATA_DIR / "register" / "register_clean.csv"
+REGISTRY_DIR = DATA_DIR / "processing" / "registry"
+INPUT_CSV = REGISTRY_DIR / "input" / "register.csv"
+OUTPUT_CSV = REGISTRY_DIR / "register_clean.csv"
 
 CATEGORIA_VALUE = "LANCHA"
 DEDUP_KEYS = ["Nº Matrícula", "Puerto"]
@@ -38,7 +39,8 @@ def main() -> None:
     if not INPUT_CSV.exists():
         print(
             f"ERROR: no se encontró {INPUT_CSV}.\n"
-            "       Verifica que el registro histórico esté en data/register.csv.",
+            "       Verifica que el registro histórico esté en\n"
+            "       data/processing/registry/input/register.csv.",
             file=sys.stderr,
         )
         sys.exit(2)

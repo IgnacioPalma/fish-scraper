@@ -110,7 +110,7 @@ Las pistas de abajo se conservan como registro histórico de la búsqueda.
 - **Estado**: ✅ Descargado (274 KB).
 - **Columnas**: `RPA EMBARCACIÓN`, `NOMBRE EMBARCACIÓN`, `MATRÍCULA EMBARCACIÓN`, `NOMBRE ARMADOR`, `PESQUERIA`, `ADJUDICATARIO`, etc.
 - **Resultado**: Mapeo nombre ↔ RPA para ~204 embarcaciones, flota artesanal Caldera. Sin COD_BARCO ni señal de llamada (RC).
-- **Nota**: Ya cargado en pipeline como `data/register/register_clean.csv`.
+- **Nota**: Ya cargado en pipeline como `data/processing/registry/register_clean.csv`.
 
 ---
 
