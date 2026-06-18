@@ -1,14 +1,24 @@
 """
-Preprocesa data/processing/registry/input/register.csv: deja sólo embarcaciones
-de categoría LANCHA y, para cada combinación (Nº Matrícula, Puerto), conserva la
-inscripción más reciente según `Fecha Inscripción`. El resultado se escribe en
-data/processing/registry/register_clean.csv.
+Limpieza del registro histórico de embarcaciones (paso 1 del pipeline registry).
 
-El registro histórico añade una nueva fila cada vez que una embarcación
-cambia de armador (con un nuevo `Nº RPA`); la matrícula del puerto en
-cambio se mantiene. Para que el RPA exportado sea el que aparece en los
-reportes VMS de Sernapesca, se conserva la fila con la fecha de
-inscripción más reciente.
+Lee data/processing/registry/input/register.csv y produce una versión limpia en
+data/processing/registry/cleaned/register.csv. Operaciones:
+
+  1. Renombra TODAS las columnas a inglés (Correlativo→id, Nº RPA→RPA,
+     Nº Matrícula→registration_number, etc.).
+  2. Normaliza la fecha de inscripción a ISO 8601 (DD-MM-YYYY → YYYY-MM-DD).
+  3. Elimina columnas que no se usan aguas abajo (puerto, vencimiento de
+     matrícula, tipo, RUT y nombre del armador, oficina).
+  4. Deduplica: el registro histórico añade una fila cada vez que una
+     embarcación cambia de armador (nuevo Nº RPA), pero la matrícula del puerto
+     se mantiene. Para cada (Nº Matrícula, Puerto) se conserva la inscripción
+     más reciente según `Fecha Inscripción`, de modo que el RPA exportado sea el
+     que aparece en los reportes VMS de Sernapesca. La deduplicación usa `Puerto`
+     (la matrícula sola no basta: el mismo número se reutiliza entre puertos),
+     por eso ocurre ANTES de descartar esa columna.
+
+El filtro por categoría (LANCHA) NO vive aquí: es un paso posterior en
+processing/registry/filter.
 """
 
 import sys
@@ -16,23 +26,43 @@ from pathlib import Path
 
 import pandas as pd
 
-DATA_DIR = Path(__file__).resolve().parent.parent.parent / "data"
+DATA_DIR = Path(__file__).resolve().parents[3] / "data"
 REGISTRY_DIR = DATA_DIR / "processing" / "registry"
 INPUT_CSV = REGISTRY_DIR / "input" / "register.csv"
-OUTPUT_CSV = REGISTRY_DIR / "register_clean.csv"
+OUTPUT_CSV = REGISTRY_DIR / "cleaned" / "register.csv"
 
-CATEGORIA_VALUE = "LANCHA"
+# Columnas originales (separador ';') → nombre en inglés. Solo las que se
+# conservan; el resto se descarta. El orden define el orden de salida.
+RENAME = {
+    "Correlativo": "id",
+    "Nº RPA": "RPA",
+    "Nombre Embarcación": "vessel_name",
+    "Categoría": "category",
+    "Fecha Inscripción": "registration_date",
+    "Nº Matrícula": "registration_number",
+    "Eslora": "length",
+    "Manga": "beam",
+    "Puntal": "depth",
+    "T.R.G": "gross_tonnage",
+    "Potencia": "engine_power",
+    "Bodega": "hold_capacity",
+    "Caleta": "cove",
+}
+
+# Columnas a eliminar explícitamente. `Puerto` se usa para deduplicar antes de
+# eliminarse, así que se descarta al final junto con el resto.
+DROP_COLS = [
+    "Puerto",
+    "Venc. Matríc",
+    "Tipo",
+    "Rut Armador",
+    "Nombre Armador",
+    "Oficina",
+]
+
+# Claves de deduplicación (en nombres ORIGINALES, antes de renombrar/eliminar).
 DEDUP_KEYS = ["Nº Matrícula", "Puerto"]
 FECHA_COL = "Fecha Inscripción"
-CATEGORIA_COL = "Categoría"
-
-REQUIRED_COLS = [
-    "Nº RPA",
-    "Nombre Embarcación",
-    CATEGORIA_COL,
-    FECHA_COL,
-    *DEDUP_KEYS,
-]
 
 
 def main() -> None:
@@ -48,7 +78,8 @@ def main() -> None:
     # El archivo usa ';' como separador (no ',').
     df = pd.read_csv(INPUT_CSV, sep=";", dtype=str, encoding="utf-8")
 
-    faltantes = [c for c in REQUIRED_COLS if c not in df.columns]
+    requeridas = list(RENAME) + DROP_COLS
+    faltantes = [c for c in requeridas if c not in df.columns]
     if faltantes:
         print(
             f"ERROR: faltan columnas requeridas en el CSV: {faltantes}.",
@@ -58,38 +89,44 @@ def main() -> None:
 
     total = len(df)
 
-    lanchas = df[df[CATEGORIA_COL] == CATEGORIA_VALUE].copy()
-    if lanchas.empty:
-        print(
-            f"ERROR: el filtro no produjo filas. Revisa que la categoría\n"
-            f"       '{CATEGORIA_VALUE}' siga apareciendo en el CSV.",
-            file=sys.stderr,
-        )
-        sys.exit(1)
+    # Fecha a datetime para deduplicar por la inscripción más reciente y para
+    # exportarla en ISO 8601. Las fechas no parseables quedan como NaT (la fila
+    # se conserva; su fecha sale vacía).
+    fecha_dt = pd.to_datetime(df[FECHA_COL], format="%d-%m-%Y", errors="coerce")
+    n_fecha_invalida = int(fecha_dt.isna().sum())
 
-    lanchas["_fecha_dt"] = pd.to_datetime(
-        lanchas[FECHA_COL], format="%d-%m-%Y", errors="coerce"
-    )
-    n_fecha_invalida = int(lanchas["_fecha_dt"].isna().sum())
-    lanchas = lanchas.dropna(subset=["_fecha_dt"])
+    # Deduplicación: ordenar por fecha descendente (NaT al final, para que una
+    # fila con fecha válida gane sobre una sin fecha en la misma clave) y
+    # conservar la primera de cada (Nº Matrícula, Puerto).
+    orden = fecha_dt.sort_values(ascending=False, na_position="last").index
+    df = df.loc[orden]
+    fecha_dt = fecha_dt.loc[orden]
+    n_antes_dedup = len(df)
+    mask_keep = ~df.duplicated(subset=DEDUP_KEYS, keep="first")
+    df = df[mask_keep]
+    fecha_dt = fecha_dt[mask_keep]
+    n_eliminadas_dup = n_antes_dedup - len(df)
 
-    lanchas = lanchas.sort_values("_fecha_dt", ascending=False)
-    n_antes_dedup = len(lanchas)
-    lanchas = lanchas.drop_duplicates(subset=DEDUP_KEYS, keep="first")
-    n_eliminadas_dup = n_antes_dedup - len(lanchas)
+    # Reemplazar la fecha original por su versión ISO.
+    df[FECHA_COL] = fecha_dt.dt.strftime("%Y-%m-%d")
 
-    lanchas = lanchas.drop(columns="_fecha_dt")
-    lanchas.to_csv(OUTPUT_CSV, sep=";", index=False, encoding="utf-8")
+    # Conservar solo las columnas a mantener, en el orden de RENAME, y renombrar.
+    df = df[list(RENAME)].rename(columns=RENAME)
+
+    # Orden estable y legible para el archivo de salida (por id numérico).
+    df = df.sort_values("id", key=lambda s: pd.to_numeric(s, errors="coerce"))
+
+    OUTPUT_CSV.parent.mkdir(parents=True, exist_ok=True)
+    df.to_csv(OUTPUT_CSV, sep=";", index=False, encoding="utf-8")
 
     print(
         f"Filas totales:                  {total:,}\n"
-        f"Filas LANCHA:                   {n_antes_dedup + n_fecha_invalida:,} "
-        f"(Categoría='{CATEGORIA_VALUE}')\n"
         f"Filas con fecha inválida:       {n_fecha_invalida:,} "
-        f"(Fecha Inscripción no parseable como DD-MM-YYYY)\n"
+        f"(Fecha Inscripción no parseable como DD-MM-YYYY; se conservan)\n"
         f"Filas eliminadas por duplicado: {n_eliminadas_dup:,} "
         f"(misma {DEDUP_KEYS[0]} y {DEDUP_KEYS[1]}, se conserva la más reciente)\n"
-        f"Filas finales:                  {len(lanchas):,}\n"
+        f"Filas finales:                  {len(df):,}\n"
+        f"Columnas finales:               {list(df.columns)}\n"
         f"Archivo escrito:                {OUTPUT_CSV}"
     )
 

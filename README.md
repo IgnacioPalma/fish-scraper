@@ -91,13 +91,29 @@ La descarga es secuencial y educada (0,5 s entre solicitudes). Cubrir el rango c
 
 ## Limpiar el registro de embarcaciones
 
-El archivo `data/processing/registry/input/register.csv` es el registro histórico de embarcaciones de Atacama. Una misma nave aparece varias veces cuando cambia de armador (cada inscripción agrega una fila con un nuevo `Nº RPA`, pero la `Nº Matrícula` del puerto se mantiene). Para alinear el registro con los reportes diarios de VMS de Sernapesca conviene quedarse con la inscripción más reciente por embarcación y, por ahora, restringir el análisis a la categoría `LANCHA`.
+El archivo `data/processing/registry/input/register.csv` es el registro histórico de embarcaciones de Atacama. Una misma nave aparece varias veces cuando cambia de armador (cada inscripción agrega una fila con un nuevo `Nº RPA`, pero la `Nº Matrícula` del puerto se mantiene). El paso de limpieza normaliza columnas y se queda con la inscripción más reciente por embarcación para alinear el registro con los reportes diarios de VMS de Sernapesca.
 
 ```bash
-uv run python -m processing.registry.clean_register
+uv run python -m processing.registry.cleaning.clean_register
 ```
 
-El script lee `data/processing/registry/input/register.csv`, filtra a `Categoría = LANCHA`, parsea `Fecha Inscripción` (`DD-MM-YYYY`) y conserva, para cada par `(Nº Matrícula, Puerto)`, la fila con la fecha más reciente. El resultado se escribe en `data/processing/registry/register_clean.csv` (mismo separador `;`, mismas columnas) e imprime un resumen con cuántas filas se descartaron por categoría, fecha inválida y duplicado.
+El script lee `data/processing/registry/input/register.csv` y: (1) renombra todas las columnas a inglés (`Correlativo`→`id`, `Nº RPA`→`RPA`, `Nº Matrícula`→`registration_number`, …); (2) convierte `Fecha Inscripción` a ISO 8601 (`registration_date`, `YYYY-MM-DD`); (3) descarta las columnas `Puerto`, `Venc. Matríc`, `Tipo`, `Rut Armador`, `Nombre Armador` y `Oficina`; y (4) deduplica conservando, para cada `(Nº Matrícula, Puerto)`, la fila con la fecha más reciente (la deduplicación usa `Puerto` antes de descartarlo, porque la matrícula sola se reutiliza entre puertos). El resultado se escribe en `data/processing/registry/cleaned/register.csv` (separador `;`).
+
+El segundo paso filtra el registro limpio a la categoría `LANCHA` (la clase de tamaño relevante para la flota artesanal de Atacama):
+
+```bash
+uv run python -m processing.registry.filter.filter_register
+```
+
+Lee `data/processing/registry/cleaned/register.csv`, conserva las filas con `category = LANCHA` y escribe `data/processing/registry/filtered/register.csv`.
+
+El tercer paso cruza el registro filtrado contra el catálogo de embarcaciones de IFOP (`data/processing/ifop/vessels.csv`, que ya trae `vessel_code` y `cod_barco`) por nombre:
+
+```bash
+uv run python -m processing.registry.ifop_matching.match_ifop_vessels
+```
+
+El emparejamiento normaliza los nombres y usa coincidencia difusa (`difflib`, corte `FUZZY_CUTOFF = 0.85`) con un **guardia de sufijo**: si ambos nombres terminan en un ordinal distinto (romano o dígito) se rechaza el par, porque `ROCIO I` y `ROCIO III` son cascos distintos; el caso sufijo-opcional (`DANIELA ANDREA` ≈ `DANIELA ANDREA I`) sí se acepta. La salida `data/processing/registry/ifop_matched/register.csv` conserva **solo** las embarcaciones del registro con par en IFOP, añadiendo `vessel_code` y `cod_barco` junto a `vessel_name`. Si varias filas del registro (homónimos / reinscripciones, p. ej. tres `FORTUNA I`) colapsan en un mismo casco IFOP, **se descartan todas**: no se puede asignar con precisión cuál es la embarcación, así que la salida queda con un `vessel_code` único por fila. El script imprime las coincidencias difusas aceptadas, las rechazadas por el guardia de sufijo y los cascos descartados por colapso, para revisión manual.
 
 ## Filtrar desembarques (landings)
 
@@ -213,7 +229,12 @@ sst_atacama/
 │   │   └── download_locations.py  # CSV diarios VMS (flota artesanal)
 │   ├── registry/          # subpaquete con preprocesamiento del registro
 │   │   ├── __init__.py
-│   │   └── clean_register.py  # data/processing/registry/input/register.csv → data/processing/registry/register_clean.csv (LANCHA, dedup)
+│   │   ├── cleaning/      # limpieza: renombra a inglés, fechas ISO, dedup
+│   │   │   └── clean_register.py  # input/register.csv → cleaned/register.csv
+│   │   ├── filter/        # filtra por categoría LANCHA
+│   │   │   └── filter_register.py  # cleaned/register.csv → filtered/register.csv
+│   │   └── ifop_matching/ # cruza por nombre con el catálogo IFOP (difuso)
+│   │       └── match_ifop_vessels.py  # filtered/register.csv → ifop_matched/register.csv
 │   └── landings/          # subpaquete con filtros sobre desembarques
 │       ├── __init__.py
 │       └── filter_landings.py # data/desembarques.csv → data/landings/landings_<filtro>_<rango>.csv
