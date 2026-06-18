@@ -16,7 +16,7 @@ del SIEM Electrónico (apellido_paterno / apellido_materno / nombre).
 Este módulo se usa como librería desde `scrape_siem.py`, pero también puede
 ejecutarse directo para inspeccionar a quién se va a buscar:
 
-    uv run python -m processing.ifop_scraping.fetch_personnel
+    uv run python -m processing.ifop.scraper.fetch_personnel
 """
 
 import sys

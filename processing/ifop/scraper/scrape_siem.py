@@ -27,11 +27,11 @@ credenciales):
      lugar, fecha_zarpe, fecha_recalada, cod_barco, puerto_zarpe, puerto_recalada.
 
 Salidas:
-  data/ifop_siem/viajes_observadores_coquimbo.csv   (CSV unificado)
-  data/ifop_siem/scrape_siem_log.csv                (estado por observador)
+  data/processing/ifop/raw/viajes_observadores_coquimbo.csv   (CSV unificado)
+  data/processing/ifop/raw/scrape_siem_log.csv                (estado por observador)
 
 Uso:
-    uv run python -m processing.ifop_scraping.scrape_siem
+    uv run python -m processing.ifop.scraper.scrape_siem
     # Para depurar viendo el navegador:  HEADLESS=0 uv run python -m ...
 """
 
@@ -45,11 +45,11 @@ import pandas as pd
 from playwright.sync_api import TimeoutError as PWTimeout
 from playwright.sync_api import sync_playwright
 
-from processing.ifop_scraping.fetch_personnel import normalizar, obtener_observadores
+from processing.ifop.scraper.fetch_personnel import normalizar, obtener_observadores
 
 
-DATA_DIR   = Path(__file__).resolve().parent.parent.parent / "data"
-OUT_DIR    = DATA_DIR / "ifop_siem"
+DATA_DIR   = Path(__file__).resolve().parents[3] / "data"
+OUT_DIR    = DATA_DIR / "processing" / "ifop" / "raw"
 OUTPUT_CSV = OUT_DIR / "viajes_observadores_coquimbo.csv"
 LOG_CSV    = OUT_DIR / "scrape_siem_log.csv"
 
