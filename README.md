@@ -79,9 +79,10 @@ uv run python -m processing.locations.scraper.download_locations         # → d
 uv run python -m processing.locations.consolidate.consolidate_locations  # → data/processing/locations/raw_consolidated/
 uv run python -m processing.locations.cleaning.clean_locations           # → data/processing/locations/cleaned/
 uv run python -m processing.locations.filter.filter_registry             # → data/processing/locations/filtered/
+uv run python -m processing.locations.zarpes.identify_zarpes             # → data/processing/locations/zarpes/
 ```
 
-El script de descarga es idempotente: si una fecha ya está descargada se salta, así que se puede interrumpir y volver a correr sin re-descargar. No necesita credenciales (el sitio de Sernapesca es público). El segundo paso une los CSV diarios de `raw_daily/` en un único CSV consolidado y deduplicado en `raw_consolidated/`. El tercer paso estandariza las columnas (nombres en inglés, tipos numéricos, fecha ISO 8601) y recorta los pings al bounding box de Atacama definido en [processing/utils/cmems_common.py](processing/utils/cmems_common.py), dejando el resultado en `cleaned/`. El cuarto paso recorta a la flota de cerco JUREL cruzando contra `data/processing/registry/register.csv` (por señal —el `signal_code` es el `radio_call_sign` sin el prefijo de letras— o por nombre normalizado) y añade el `rpa` de cada barco, dejando el resultado en `filtered/`.
+El script de descarga es idempotente: si una fecha ya está descargada se salta, así que se puede interrumpir y volver a correr sin re-descargar. No necesita credenciales (el sitio de Sernapesca es público). El segundo paso une los CSV diarios de `raw_daily/` en un único CSV consolidado y deduplicado en `raw_consolidated/`. El tercer paso estandariza las columnas (nombres en inglés, tipos numéricos, fecha ISO 8601) y recorta los pings al bounding box de Atacama definido en [processing/utils/cmems_common.py](processing/utils/cmems_common.py), dejando el resultado en `cleaned/`. El cuarto paso recorta a la flota de cerco JUREL cruzando contra `data/processing/registry/register.csv` (por señal —el `signal_code` es el `radio_call_sign` sin el prefijo de letras— o por nombre normalizado) y añade el `rpa` de cada barco, dejando el resultado en `filtered/`. El quinto paso agrupa los pings en **zarpes** (viajes): como el VMS deja de reportar en puerto (los pings casi nunca llegan al muelle), el corte de viaje se detecta por el silencio de reporte —un hueco > 6 h abre un zarpe nuevo—, y deja en `zarpes/` los pings etiquetados con `zarpe_id` más una tabla resumen con una fila por viaje (inicio/fin, duración, distancia recorrida, distancia máxima a puerto, puerto de zarpe/recalada aproximados, etc.).
 
 Detrás de escena conviven dos patrones de URL por una migración de CMS (Drupal → WordPress) hacia mediados de 2022. El script rutea cada fecha **estrictamente** a un formato u otro según el corte definido en [processing/utils/locations_common.py](processing/utils/locations_common.py) (`OLD_FORMAT_END`) — no hay fallback cruzado:
 
@@ -251,8 +252,10 @@ sst_atacama/
 │   │   │   └── consolidate_locations.py  # → data/processing/locations/raw_consolidated/
 │   │   ├── cleaning/      # estandariza columnas + recorta al bbox de Atacama
 │   │   │   └── clean_locations.py  # → data/processing/locations/cleaned/
-│   │   └── filter/        # recorta a la flota del registro (señal o nombre) + añade rpa
-│   │       └── filter_registry.py  # → data/processing/locations/filtered/
+│   │   ├── filter/        # recorta a la flota del registro (señal o nombre) + añade rpa
+│   │   │   └── filter_registry.py  # → data/processing/locations/filtered/
+│   │   └── zarpes/        # agrupa pings en viajes (corte por hueco de reporte > 6h)
+│   │       └── identify_zarpes.py  # → data/processing/locations/zarpes/ (pings + resumen)
 │   ├── registry/          # subpaquete con preprocesamiento del registro
 │   │   ├── __init__.py
 │   │   ├── cleaning/      # limpieza: renombra a inglés, fechas ISO, dedup
