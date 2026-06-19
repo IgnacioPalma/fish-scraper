@@ -25,6 +25,13 @@ credenciales):
      `viajes_muestreador.php` con la tabla de viajes del observador.
   5. Leer esa tabla, mapeando por encabezado a las columnas pedidas:
      lugar, fecha_zarpe, fecha_recalada, cod_barco, puerto_zarpe, puerto_recalada.
+     La celda "lugar" es un link a la ficha del viaje (`detalle_viaje_tierra.php`
+     o `detalle_viaje_embarcado.php`, con `id_viaje` en la query): se guarda ese
+     id por fila para abrir la ficha en el paso 6.
+  6. Para cada viaje, abrir su ficha de detalle (acceso GET directo por
+     `id_viaje`, reutilizando la sesión — no hace falta volver a la tabla) y
+     leer tres campos del bloque etiqueta/valor: Tipo de Embarcación, Especie
+     Objetivo y Número de Lances.
 
 Salidas:
   data/processing/ifop/raw/viajes_observadores.csv   (CSV unificado)
@@ -35,13 +42,16 @@ Uso:
     # Para depurar viendo el navegador:  HEADLESS=0 uv run python -m ...
 """
 
+import html as htmllib
 import os
 import re
 import sys
+from concurrent.futures import ThreadPoolExecutor
 from difflib import SequenceMatcher
 from pathlib import Path
 
 import pandas as pd
+import requests
 from playwright.sync_api import TimeoutError as PWTimeout
 from playwright.sync_api import sync_playwright
 
@@ -54,6 +64,9 @@ OUTPUT_CSV = OUT_DIR / "viajes_observadores.csv"
 LOG_CSV    = OUT_DIR / "scrape_siem_log.csv"
 
 SIEM_URL = "https://portal.ifop.cl/siem/"
+# Las fichas de detalle del viaje cuelgan de esta carpeta; se acceden por GET
+# directo (`<ficha>.php?id_viaje=<id>`) reutilizando la sesión del navegador.
+DETALLE_URL_BASE = "https://portal.ifop.cl/siem/scripts/php/visualizacion/"
 
 # Mostrar el navegador (HEADLESS=0 para depurar). Por defecto, headless.
 HEADLESS = os.environ.get("HEADLESS", "1") not in ("0", "false", "False")
@@ -62,6 +75,13 @@ HEADLESS = os.environ.get("HEADLESS", "1") not in ("0", "false", "False")
 NAV_TIMEOUT_MS = 60_000
 ESPERA_MS      = 3_000
 PAUSA_MS       = 1_000
+# Las fichas de detalle se descargan con `requests` (reutilizando la cookie de
+# sesión del navegador), no con Playwright: son páginas estáticas accesibles por
+# GET y un observador puede tener cientos de viajes, así que navegarlas con el
+# browser sería inviable. Se descargan en paralelo con un pool acotado para no
+# saturar al SIEM.
+DETALLE_WORKERS  = 6
+DETALLE_TIMEOUT  = 30
 
 # Score mínimo de similitud de nombre para considerar el match "bueno".
 SCORE_OK = 0.80
@@ -76,10 +96,20 @@ COLUMNAS = {
     "puerto zarpe":    "puerto_zarpe",
     "puerto recalada": "puerto_recalada",
 }
+# Campos del bloque etiqueta/valor de la ficha de detalle del viaje (link
+# "lugar"). Se localizan por etiqueta normalizada (ver `_clasificar_detalle`),
+# no por posición, porque tierra y embarcado comparten el mismo layout.
+COLS_DETALLE = ["tipo_embarcacion", "especie_objetivo", "numero_lances"]
+
 COLS_SALIDA = ["lugar", "fecha_zarpe", "fecha_recalada",
-               "cod_barco", "puerto_zarpe", "puerto_recalada"]
+               "cod_barco", "puerto_zarpe", "puerto_recalada"] + COLS_DETALLE
 
 _RE_RUT = re.compile(r",\s*'(\d+)'\s*\)")
+# Link de la celda "lugar": enviarFormulario(...,'<ficha>.php?id_viaje=<id>',...).
+_RE_DETALLE = re.compile(r"'([^?']+\.php)\?id_viaje=([0-9a-fA-F]+)'")
+# Filas etiqueta/valor de la ficha: <td><strong>Etiqueta :</strong></td><td>Valor</td>.
+_RE_PARES = re.compile(r"<strong>(.*?)</strong>\s*</td>\s*<td[^>]*>(.*?)</td>", re.S | re.I)
+_RE_TAGS  = re.compile(r"<[^>]+>")
 
 
 def _buscar_coincidencias(page, apellido_paterno: str) -> list[dict]:
@@ -166,13 +196,20 @@ def _elegir_mejor(coincidencias: list[dict], obs: dict) -> tuple[dict | None, fl
 
 
 def _leer_tabla_viajes(page) -> list[dict]:
-    """Lee viajes_muestreador.php y devuelve filas con las columnas pedidas."""
+    """Lee viajes_muestreador.php y devuelve filas con las columnas pedidas.
+
+    Cada fila incluye además las claves internas `_ficha` / `_id_viaje` (la ficha
+    de detalle y su id, extraídos del link de la celda "lugar") que consume el
+    paso de detalle; se descartan antes de escribir el CSV.
+    """
     filas = page.eval_on_selector_all(
         "table tr",
         """trs => trs.map(tr => {
             const ths = Array.from(tr.querySelectorAll('th')).map(t => t.innerText.trim());
             const tds = Array.from(tr.querySelectorAll('td')).map(t => t.innerText.trim());
-            return {ths, tds};
+            const a = tr.querySelector('a[onclick*="id_viaje="]');
+            const onclick = a ? (a.getAttribute('onclick') || '') : '';
+            return {ths, tds, onclick};
         })""",
     )
     # Localizar la fila de encabezado y construir el mapeo índice → columna.
@@ -197,12 +234,78 @@ def _leer_tabla_viajes(page) -> list[dict]:
         # Una fila de datos válida tiene al menos fecha de zarpe o barco.
         if not (fila.get("fecha_zarpe") or fila.get("cod_barco")):
             continue
+        m = _RE_DETALLE.search(f["onclick"])
+        fila["_ficha"]    = m.group(1) if m else ""
+        fila["_id_viaje"] = m.group(2) if m else ""
         salida.append(fila)
     return salida
 
 
-def _scrape_observador(page, obs: dict) -> tuple[list[dict], dict]:
-    """Procesa un observador. Devuelve (filas_de_viaje, fila_de_log)."""
+def _clasificar_detalle(etiqueta: str) -> str | None:
+    """Mapea una etiqueta de la ficha de detalle a una columna de COLS_DETALLE.
+
+    Se compara normalizada (sin tildes, sin ':' ni '?' —el SIEM sirve "Tipo
+    Embarcación" como "Tipo Embarcaci?"). "numero lances" se exige exacto para no
+    capturar "Número Lances Muestreados".
+    """
+    e = normalizar(etiqueta).replace("?", "").replace(":", "")
+    e = " ".join(e.split())
+    if e.startswith("tipo embarcaci"):
+        return "tipo_embarcacion"
+    if e.startswith("especie objetivo"):
+        return "especie_objetivo"
+    if e == "numero lances":
+        return "numero_lances"
+    return None
+
+
+def _parsear_detalle(html: str) -> dict:
+    """Extrae COLS_DETALLE del HTML de una ficha de detalle del viaje.
+
+    La ficha es un bloque de filas `<td><strong>Etiqueta :</strong></td><td>Valor
+    </td>`, idéntico para viajes de tierra y embarcados. Las etiquetas/valores
+    traen entidades HTML (p.ej. `N&#250;mero`) que hay que desescapar antes de
+    clasificar. Devuelve solo las claves de COLS_DETALLE presentes.
+    """
+    campos: dict[str, str] = {}
+    for etiqueta, valor in _RE_PARES.findall(html):
+        etiqueta = htmllib.unescape(_RE_TAGS.sub("", etiqueta))
+        clave = _clasificar_detalle(etiqueta)
+        if clave and clave not in campos:
+            campos[clave] = " ".join(htmllib.unescape(_RE_TAGS.sub("", valor)).split())
+    return campos
+
+
+def _refrescar_cookies(sess: requests.Session, page) -> None:
+    """Copia las cookies del contexto del navegador a la sesión `requests`.
+
+    El SIEM autentica la ficha de detalle por la cookie de sesión PHP; la
+    refrescamos por observador por si el contexto la rotó.
+    """
+    sess.cookies.clear()
+    for c in page.context.cookies():
+        sess.cookies.set(c["name"], c["value"], domain=c.get("domain"))
+
+
+def _fetch_detalle(sess: requests.Session, ficha: str, id_viaje: str) -> dict:
+    """Descarga la ficha de detalle (GET) y la parsea. Errores → dict vacío."""
+    if not (ficha and id_viaje):
+        return {}
+    url = f"{DETALLE_URL_BASE}{ficha}?id_viaje={id_viaje}"
+    try:
+        resp = sess.get(url, timeout=DETALLE_TIMEOUT)
+        resp.raise_for_status()
+    except requests.RequestException:
+        return {}
+    return _parsear_detalle(resp.text)
+
+
+def _scrape_observador(page, obs: dict, sess: requests.Session) -> tuple[list[dict], dict]:
+    """Procesa un observador. Devuelve (filas_de_viaje, fila_de_log).
+
+    `sess` es una sesión `requests` que comparte la cookie del navegador y se usa
+    para descargar las fichas de detalle de los viajes.
+    """
     nombre_dir = obs["nombres"]
     log = {
         "observador": nombre_dir, "cargo": obs["cargo"],
@@ -251,7 +354,23 @@ def _scrape_observador(page, obs: dict) -> tuple[list[dict], dict]:
         return [], log
 
     viajes = _leer_tabla_viajes(page)
-    for v in viajes:
+    # La tabla ya está en memoria; ahora descargamos la ficha de detalle de cada
+    # viaje por GET directo, en paralelo y reutilizando la cookie del navegador
+    # (un observador puede tener cientos de viajes). Un fallo puntual de ficha
+    # deja los campos vacíos pero no descarta el viaje.
+    _refrescar_cookies(sess, page)
+    if viajes:
+        with ThreadPoolExecutor(max_workers=DETALLE_WORKERS) as pool:
+            detalles = list(pool.map(
+                lambda v: _fetch_detalle(sess, v["_ficha"], v["_id_viaje"]), viajes))
+    else:
+        detalles = []
+
+    for v, detalle in zip(viajes, detalles):
+        v.pop("_ficha", None)
+        v.pop("_id_viaje", None)
+        for col in COLS_DETALLE:
+            v[col] = detalle.get(col, "")
         v["observador"] = nombre_dir
         v["rut"] = cand["rut"]
         v["cargo"] = obs["cargo"]
@@ -272,6 +391,11 @@ def main() -> None:
     todas_filas: list[dict] = []
     log_filas: list[dict] = []
 
+    # Sesión `requests` compartida para descargar las fichas de detalle; sus
+    # cookies se refrescan desde el navegador en cada observador.
+    sess = requests.Session()
+    sess.headers.update({"User-Agent": "Mozilla/5.0"})
+
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=HEADLESS)
         page = browser.new_context().new_page()
@@ -280,7 +404,7 @@ def main() -> None:
         for i, obs in enumerate(observadores, 1):
             print(f"[{i}/{len(observadores)}] {obs['nombres']} ... ", end="", flush=True)
             try:
-                viajes, log = _scrape_observador(page, obs)
+                viajes, log = _scrape_observador(page, obs, sess)
             except (PWTimeout, Exception) as exc:  # noqa: BLE001 — un fallo no aborta la corrida
                 log = {
                     "observador": obs["nombres"], "cargo": obs["cargo"],

@@ -31,6 +31,13 @@ Observadores Científicos de todas las bases. `scrape_siem.py` busca a cada uno 
 SIEM (Playwright, acceso anónimo) y consolida todos sus viajes en un único CSV
 crudo, más un log con el estado del cruce nombre↔SIEM por observador.
 
+Por cada viaje, además, abre la ficha de detalle (el link de la celda "lugar") y
+extrae tres campos: `tipo_embarcacion`, `especie_objetivo` y `numero_lances`.
+Las fichas no se navegan con el browser sino que se descargan por GET con
+`requests` (reutilizando la cookie de sesión del navegador) y en paralelo: un
+observador puede tener cientos de viajes, así que navegarlas una a una sería
+inviable.
+
 ```bash
 uv run python -m processing.ifop.scraper.scrape_siem
 # Depurar viendo el navegador:  HEADLESS=0 uv run python -m ...
@@ -39,9 +46,12 @@ uv run python -m processing.ifop.scraper.scrape_siem
 ### 2. Limpieza — `processing/ifop/cleaning/`
 
 `clean_viajes.py` normaliza el CSV crudo: nombres de columna en inglés, `lugar`
-→ booleano `embarked`, fechas a ISO 8601, y separa `cod_barco` / `puerto_*` en
-sus partes `<id>` + `<nombre>`. Descarta las columnas de procedencia del
-scraping (observador, rut, cargo, estado/score del cruce).
+→ booleano `embarked`, fechas a ISO 8601, y separa `cod_barco` / `puerto_*` /
+`especie_objetivo` en sus partes `<id>` + `<nombre>`. Mapea también los campos de
+la ficha de detalle: `tipo_embarcacion` → `vessel_type`, `especie_objetivo` →
+`target_species_id`/`target_species_name`, `numero_lances` → `num_hauls` (entero).
+Descarta las columnas de procedencia del scraping (observador, rut, cargo,
+estado/score del cruce).
 
 ```bash
 uv run python -m processing.ifop.cleaning.clean_viajes

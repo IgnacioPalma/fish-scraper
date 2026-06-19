@@ -13,6 +13,13 @@ Transformaciones (entrada → salida):
   puerto_zarpe       → departure_port_id + departure_port_name
                        ("10 - CALDERA" → 10, "CALDERA")
   puerto_recalada    → arrival_port_id + arrival_port_name
+  tipo_embarcacion   → vessel_type        (texto: "Artesanal", "Industrial", ...)
+  especie_objetivo   → target_species_id + target_species_name
+                       ("33 - SARDINA COMUN" → 33, "SARDINA COMUN")
+  numero_lances      → num_hauls           (entero)
+
+Los tres últimos provienen de la ficha de detalle del viaje (link "lugar") y son
+opcionales: si el CSV crudo no los trae (scraping antiguo), quedan vacíos.
 
 Se descartan las columnas de procedencia del scraping (observador, rut, cargo,
 estado_match, score_match): identifican al observador y la calidad del cruce de
@@ -56,9 +63,11 @@ RE_COD_NOMBRE = r"^\s*(\d+)\s*-\s*(.*?)\s*$"
 COLS_SALIDA = [
     "embarked",
     "departure_datetime", "arrival_datetime",
-    "vessel_code", "vessel_name",
+    "vessel_code", "vessel_name", "vessel_type",
     "departure_port_id", "departure_port_name",
     "arrival_port_id", "arrival_port_name",
+    "target_species_id", "target_species_name",
+    "num_hauls",
 ]
 
 
@@ -94,11 +103,24 @@ def _separar_cod_nombre(serie: pd.Series) -> pd.DataFrame:
     return partes
 
 
+def _columna_opcional(df: pd.DataFrame, nombre: str) -> pd.Series:
+    """Devuelve df[nombre] como texto, o una columna vacía si no existe.
+
+    Las columnas de la ficha de detalle (tipo_embarcacion, especie_objetivo,
+    numero_lances) pueden faltar en un CSV crudo viejo; así el limpiador sigue
+    funcionando y deja esos campos vacíos en vez de fallar.
+    """
+    if nombre in df.columns:
+        return df[nombre].fillna("")
+    return pd.Series([""] * len(df), index=df.index, dtype="object")
+
+
 def limpiar(df: pd.DataFrame) -> pd.DataFrame:
     """Aplica todas las transformaciones y devuelve la tabla final."""
-    barco  = _separar_cod_nombre(df["cod_barco"])
-    zarpe  = _separar_cod_nombre(df["puerto_zarpe"])
-    recala = _separar_cod_nombre(df["puerto_recalada"])
+    barco   = _separar_cod_nombre(df["cod_barco"])
+    zarpe   = _separar_cod_nombre(df["puerto_zarpe"])
+    recala  = _separar_cod_nombre(df["puerto_recalada"])
+    especie = _separar_cod_nombre(_columna_opcional(df, "especie_objetivo"))
 
     salida = pd.DataFrame({
         "embarked":            _a_booleano(df["lugar"]),
@@ -106,10 +128,15 @@ def limpiar(df: pd.DataFrame) -> pd.DataFrame:
         "arrival_datetime":    _estandarizar_fecha(df["fecha_recalada"]),
         "vessel_code":         barco["codigo"],
         "vessel_name":         barco["nombre"],
+        "vessel_type":         _columna_opcional(df, "tipo_embarcacion").replace("", pd.NA),
         "departure_port_id":   zarpe["codigo"],
         "departure_port_name": zarpe["nombre"],
         "arrival_port_id":     recala["codigo"],
         "arrival_port_name":   recala["nombre"],
+        "target_species_id":   especie["codigo"],
+        "target_species_name": especie["nombre"],
+        "num_hauls":           pd.to_numeric(
+            _columna_opcional(df, "numero_lances"), errors="coerce").astype("Int64"),
     })
     return salida[COLS_SALIDA]
 
