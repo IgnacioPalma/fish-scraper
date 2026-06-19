@@ -1,7 +1,7 @@
 """
 Orquesta el pipeline IFOP de punta a punta, ejecutando cada etapa en orden:
 
-  1. scraper       → data/processing/ifop/raw/viajes_observadores_coquimbo.csv
+  1. scraper       → data/processing/ifop/raw/viajes_observadores.csv
   2. cleaning      → data/processing/ifop/cleaned/ifop_cleaned.csv
   3. identifiers   → data/processing/ifop/ports.csv  +  data/processing/ifop/vessels.csv
 

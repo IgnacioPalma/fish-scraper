@@ -1,5 +1,5 @@
 """
-Obtiene la lista de Observadores Científicos de Coquimbo desde el directorio de
+Obtiene la lista de Observadores Científicos desde el directorio de
 personal del IFOP (https://www.ifop.cl/en/quienes-somos/personal-ifop/).
 
 El directorio se alimenta de un endpoint AJAX que devuelve JSON; lo consultamos
@@ -7,7 +7,7 @@ directamente (sin navegador) y filtramos en el cliente por:
 
     División    = "Investigación Pesquera"
     Departamento= "Gestión de Muestreo"
-    Lugar (base)= "Coquimbo"
+    Lugar (base)= "TODAS"  (todas las bases; ver BASE más abajo)
 
 El campo "nombres" del directorio viene como "ApellidoPaterno ApellidoMaterno
 Nombre(s)"; `dividir_nombre` lo separa en los tres campos que pide el buscador
@@ -35,7 +35,10 @@ LISTAR_URL = (
 # resistir variantes de mayúsculas/acentos del directorio.
 DIVISION     = "Investigación Pesquera"
 DEPARTAMENTO = "Gestión de Muestreo"
-BASE         = "Coquimbo"
+# Base (lugar) a incluir. El centinela "TODAS" desactiva el filtro por base y
+# trae a los observadores de todas las bases; cualquier otro valor filtra por
+# esa base exacta (p.ej. "Coquimbo").
+BASE         = "TODAS"
 
 # Cabecera de navegador: el endpoint rechaza peticiones sin User-Agent.
 _HEADERS = {"User-Agent": "Mozilla/5.0"}
@@ -98,12 +101,14 @@ def obtener_observadores() -> list[dict]:
     div_n  = normalizar(DIVISION)
     dep_n  = normalizar(DEPARTAMENTO)
     base_n = normalizar(BASE)
+    # "TODAS" desactiva el filtro por base (se incluyen todas las bases).
+    todas_bases = base_n == "todas"
 
     observadores = []
     for p in personal:
         if (normalizar(p.get("division", "")) == div_n
                 and normalizar(p.get("departamento", "")) == dep_n
-                and normalizar(p.get("base", "")) == base_n):
+                and (todas_bases or normalizar(p.get("base", "")) == base_n)):
             paterno, materno, nombre = dividir_nombre(p.get("nombres", ""))
             observadores.append({
                 "nombres":          p.get("nombres", "").strip(),

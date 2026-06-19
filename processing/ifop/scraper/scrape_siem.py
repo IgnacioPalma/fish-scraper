@@ -1,6 +1,6 @@
 """
-Recorre los Observadores Científicos de Coquimbo (ver `fetch_personnel.py`) y,
-para cada uno, busca su actividad de muestreo en el SIEM Electrónico de IFOP
+Recorre los Observadores Científicos (todas las bases; ver `fetch_personnel.py`)
+y, para cada uno, busca su actividad de muestreo en el SIEM Electrónico de IFOP
 (https://portal.ifop.cl/siem/), consolidando todos los viajes en un único CSV.
 
 Flujo por observador (navegador Playwright, acceso anónimo — el SIEM no pide
@@ -27,8 +27,8 @@ credenciales):
      lugar, fecha_zarpe, fecha_recalada, cod_barco, puerto_zarpe, puerto_recalada.
 
 Salidas:
-  data/processing/ifop/raw/viajes_observadores_coquimbo.csv   (CSV unificado)
-  data/processing/ifop/raw/scrape_siem_log.csv                (estado por observador)
+  data/processing/ifop/raw/viajes_observadores.csv   (CSV unificado)
+  data/processing/ifop/raw/scrape_siem_log.csv       (estado por observador)
 
 Uso:
     uv run python -m processing.ifop.scraper.scrape_siem
@@ -50,7 +50,7 @@ from processing.ifop.scraper.fetch_personnel import normalizar, obtener_observad
 
 DATA_DIR   = Path(__file__).resolve().parents[3] / "data"
 OUT_DIR    = DATA_DIR / "processing" / "ifop" / "raw"
-OUTPUT_CSV = OUT_DIR / "viajes_observadores_coquimbo.csv"
+OUTPUT_CSV = OUT_DIR / "viajes_observadores.csv"
 LOG_CSV    = OUT_DIR / "scrape_siem_log.csv"
 
 SIEM_URL = "https://portal.ifop.cl/siem/"

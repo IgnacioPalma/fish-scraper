@@ -22,7 +22,7 @@ El "código" siempre es el entero inicial; el resto (que puede contener más
 guiones, p.ej. "601599 - PIA - KATA") queda íntegro como nombre.
 
 Entrada:
-  data/processing/ifop/raw/viajes_observadores_coquimbo.csv
+  data/processing/ifop/raw/viajes_observadores.csv
 
 Salida:
   data/processing/ifop/cleaned/ifop_cleaned.csv
@@ -39,7 +39,7 @@ import pandas as pd
 
 
 DATA_DIR   = Path(__file__).resolve().parents[3] / "data"
-INPUT_CSV  = DATA_DIR / "processing" / "ifop" / "raw" / "viajes_observadores_coquimbo.csv"
+INPUT_CSV  = DATA_DIR / "processing" / "ifop" / "raw" / "viajes_observadores.csv"
 OUT_DIR    = DATA_DIR / "processing" / "ifop" / "cleaned"
 OUTPUT_CSV = OUT_DIR / "ifop_cleaned.csv"
 
