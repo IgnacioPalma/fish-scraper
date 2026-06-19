@@ -72,13 +72,14 @@ Donde `<rango>` es `2023` para un único año o `2017_2022` si abarca varios. Ca
 
 ## Descargar reportes diarios VMS de Sernapesca
 
-Sernapesca publica un CSV por día con las posiciones reportadas por el VMS de la flota artesanal chilena (código de flota 31). Las columnas son las del reporte básico: nombre, indicativo de llamada, fecha/hora, latitud, longitud, rumbo y velocidad. El downloader recorre las fechas del rango global (intersección con la disponibilidad de Sernapesca, que empieza el 3 de marzo de 2019) y guarda un archivo por día en `data/locations/` con el nombre `flota_artesanal_YYYY-MM-DD.csv`.
+Sernapesca publica un CSV por día con las posiciones reportadas por el VMS de la flota artesanal chilena (código de flota 31). Las columnas son las del reporte básico: nombre, indicativo de llamada, fecha/hora, latitud, longitud, rumbo y velocidad. El downloader recorre las fechas del rango global (intersección con la disponibilidad de Sernapesca, que empieza el 3 de marzo de 2019) y guarda un archivo por día en `data/processing/locations/raw_daily/` con el nombre `flota_artesanal_YYYY-MM-DD.csv`.
 
 ```bash
-uv run python -m processing.locations.download_locations
+uv run python -m processing.locations.scraper.download_locations         # → data/processing/locations/raw_daily/
+uv run python -m processing.locations.consolidate.consolidate_locations  # → data/processing/locations/raw_consolidated/
 ```
 
-El script es idempotente: si una fecha ya está descargada se salta, así que se puede interrumpir y volver a correr sin re-descargar. No necesita credenciales (el sitio de Sernapesca es público).
+El script de descarga es idempotente: si una fecha ya está descargada se salta, así que se puede interrumpir y volver a correr sin re-descargar. No necesita credenciales (el sitio de Sernapesca es público). El segundo paso une los CSV diarios de `raw_daily/` en un único CSV consolidado y deduplicado en `raw_consolidated/`.
 
 Detrás de escena conviven dos patrones de URL por una migración de CMS (Drupal → WordPress) hacia mediados de 2022. El script rutea cada fecha **estrictamente** a un formato u otro según el corte definido en [processing/utils/locations_common.py](processing/utils/locations_common.py) (`OLD_FORMAT_END`) — no hay fallback cruzado:
 
@@ -240,9 +241,12 @@ sst_atacama/
 │   │   ├── download_bgc.py    # O₂ min, nppv (GLOBAL_MULTIYEAR_BGC_001_029)
 │   │   ├── download_sla.py    # sla, adt, ugos, vgos (SEALEVEL_GLO_PHY_L4_MY_008_047)
 │   │   └── download_wind.py   # vientos a 10 m (WIND_GLO_PHY_L4_MY_012_006)
-│   ├── locations/         # subpaquete con el descargador VMS de Sernapesca
+│   ├── locations/         # subpaquete con el pipeline VMS de Sernapesca
 │   │   ├── __init__.py
-│   │   └── download_locations.py  # CSV diarios VMS (flota artesanal)
+│   │   ├── scraper/       # descarga: CSV diarios VMS (flota artesanal)
+│   │   │   └── download_locations.py  # → data/processing/locations/raw_daily/
+│   │   └── consolidate/   # une los diarios en un CSV deduplicado
+│   │       └── consolidate_locations.py  # → data/processing/locations/raw_consolidated/
 │   ├── registry/          # subpaquete con preprocesamiento del registro
 │   │   ├── __init__.py
 │   │   ├── cleaning/      # limpieza: renombra a inglés, fechas ISO, dedup

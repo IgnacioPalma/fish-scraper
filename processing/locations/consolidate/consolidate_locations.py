@@ -1,8 +1,9 @@
 """
 Une los CSVs diarios VMS de Sernapesca (uno por día, escritos por
-processing.locations.download_locations) en un único CSV consolidado.
+processing.locations.scraper.download_locations) en un único CSV consolidado.
 
-Lee data/locations/flota_artesanal_YYYY-MM-DD.csv (relativo a la raíz del proyecto) para todas las fechas
+Lee data/processing/locations/raw_daily/flota_artesanal_YYYY-MM-DD.csv (relativo
+a la raíz del proyecto) para todas las fechas
 disponibles, concatena en orden cronológico y deduplica por
 (Radio Call Sign (RC), Location date). Los reportes diarios de Sernapesca se
 solapan en los bordes —el archivo del día N suele contener pings cuya
@@ -17,8 +18,8 @@ fuera de REQUIRED_COLS y se saltan con un aviso en stderr — el día queda
 sin cubrir en el CSV consolidado, pero el archivo diario crudo sigue
 disponible en disco si en el futuro se decide normalizarlo a mano.
 
-Salida: data/locations/locations_flota_artesanal_<rango>.csv, con el
-mismo separador (`;`) y encoding UTF-8.
+Salida: data/processing/locations/raw_consolidated/locations_flota_artesanal_<rango>.csv,
+con el mismo separador (`;`) y encoding UTF-8.
 
 Idempotente: reescribe el archivo de salida en cada corrida.
 """
@@ -32,8 +33,10 @@ from processing.utils.date_ranges import END_DATE, START_DATE
 from processing.utils.locations_common import FLEET_NAME
 
 
-INPUT_DIR = Path(__file__).resolve().parent.parent.parent / "data" / "locations"
-OUTPUT_DIR = INPUT_DIR
+# __file__ = processing/locations/consolidate/consolidate_locations.py → parents[3] = raíz del proyecto.
+_DATA_DIR = Path(__file__).resolve().parents[3] / "data" / "processing" / "locations"
+INPUT_DIR = _DATA_DIR / "raw_daily"
+OUTPUT_DIR = _DATA_DIR / "raw_consolidated"
 
 DEDUP_KEYS = ["Radio Call Sign (RC)", "Location date"]
 DATE_COL = "Location date"
@@ -54,8 +57,8 @@ def main() -> None:
     sys.stdout.reconfigure(line_buffering=True)
     sys.stderr.reconfigure(line_buffering=True)
 
-    # Glob estrecho (cuatro dígitos guión dos dígitos guión dos dígitos): así
-    # nunca capturamos el propio archivo de salida `locations_flota_artesanal_*.csv`.
+    # Glob estrecho (cuatro dígitos guión dos dígitos guión dos dígitos): captura
+    # solo los CSV diarios `flota_artesanal_YYYY-MM-DD.csv` de raw_daily.
     pattern = f"{FLEET_NAME}_????-??-??.csv"
     files = sorted(INPUT_DIR.glob(pattern))
 
@@ -63,7 +66,7 @@ def main() -> None:
         print(
             f"ERROR: no se encontraron CSVs diarios en {INPUT_DIR} "
             f"(patrón '{pattern}').\n"
-            "       Corré primero `docker compose run --rm download_locations`.",
+            "       Corré primero `uv run python -m processing.locations.scraper.download_locations`.",
             file=sys.stderr,
         )
         sys.exit(2)

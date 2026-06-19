@@ -1,6 +1,7 @@
 """
 Descarga los reportes diarios VMS de Sernapesca (flota artesanal, código 31)
-y los guarda como un CSV por día en data/locations/ (relativo a la raíz del proyecto).
+y los guarda como un CSV por día en data/processing/locations/raw_daily/
+(relativo a la raíz del proyecto).
 
 - El rango GLOBAL de fechas viene de processing/utils/date_ranges.py (variables
   START_DATE y END_DATE). Se aplica a todo el proyecto.
@@ -40,7 +41,11 @@ from processing.utils.locations_common import (
 )
 
 
-OUTPUT_DIR = Path(__file__).resolve().parent.parent.parent / "data" / "locations"
+# __file__ = processing/locations/scraper/download_locations.py → parents[3] = raíz del proyecto.
+OUTPUT_DIR = (
+    Path(__file__).resolve().parents[3]
+    / "data" / "processing" / "locations" / "raw_daily"
+)
 
 REQUEST_TIMEOUT = 30        # segundos por solicitud HTTP
 REQUEST_DELAY = 0.5         # segundos entre solicitudes que tocan la red
@@ -127,9 +132,8 @@ def fetch_new(d: date, dest: Path) -> tuple[str, str, int]:
 
 
 def main() -> None:
-    # En Docker stdout suele estar bufferizado por bloque; con line-buffering
-    # cada print() aparece al instante en `docker compose run` (PYTHONUNBUFFERED
-    # en docker-compose.yml es el segundo cinturón).
+    # Con line-buffering cada print() aparece al instante (la descarga es larga
+    # y conviene ver el progreso fecha por fecha sin esperar a que se llene el buffer).
     sys.stdout.reconfigure(line_buffering=True)
     sys.stderr.reconfigure(line_buffering=True)
 
