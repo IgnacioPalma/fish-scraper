@@ -1,6 +1,6 @@
 """
-Filtra data/bitacora/bitacora_full.csv y escribe
-data/bitacora/bitacora_caldera_jurel.csv con las siguientes restricciones:
+Filtra data/processing/capture/cleaned/capture.csv y escribe
+data/processing/capture/capture.csv con las siguientes restricciones:
 
   - Rango de fechas global del proyecto (utils/date_ranges.py).
   - Puerto de interés: Caldera (utils/ports.py).
@@ -19,16 +19,17 @@ from processing.utils.ports import PORT_OF_INTEREST
 from processing.utils.species import ALL_SPECIES, SPECIES_OF_INTEREST
 
 
-DATA_DIR = Path(__file__).resolve().parent.parent.parent / "data"
-INPUT_CSV = DATA_DIR / "bitacora" / "bitacora_full.csv"
-OUTPUT_CSV = DATA_DIR / "bitacora" / "bitacora_caldera_jurel.csv"
+DATA_DIR = Path(__file__).resolve().parents[3] / "data"
+INPUT_CSV = DATA_DIR / "processing" / "capture" / "cleaned" / "capture.csv"
+OUTPUT_DIR = DATA_DIR / "processing" / "capture"
+OUTPUT_CSV = OUTPUT_DIR / "capture.csv"
 
 
 def main() -> None:
     if not INPUT_CSV.exists():
         print(
             f"ERROR: no se encontró {INPUT_CSV}.\n"
-            "       Ejecutá primero: uv run python -m processing.bitacora.clean_bitacora",
+            "       Ejecutá primero: uv run python -m processing.capture.cleaning.clean_capture",
             file=sys.stderr,
         )
         sys.exit(2)
@@ -39,7 +40,7 @@ def main() -> None:
     if SPECIES_OF_INTEREST not in df.columns:
         print(
             f"ERROR: columna '{SPECIES_OF_INTEREST}' no encontrada en {INPUT_CSV}.\n"
-            "       Verificá que clean_bitacora haya procesado el archivo correctamente.",
+            "       Verificá que clean_capture haya procesado el archivo correctamente.",
             file=sys.stderr,
         )
         sys.exit(2)
@@ -95,6 +96,7 @@ def main() -> None:
     cols_otras = [s for s in ALL_SPECIES if s != SPECIES_OF_INTEREST and s in df.columns]
     df = df.drop(columns=cols_otras)
 
+    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     df.to_csv(OUTPUT_CSV, sep=";", index=False, encoding="utf-8")
 
     print(

@@ -1,11 +1,11 @@
 """
-Empareja cada recalada de data/bitacora/bitacora_caldera_jurel.csv con la
+Empareja cada recalada de data/processing/capture/capture.csv con la
 embarcación VMS más probable, usando coincidencia espacio-temporal:
 para cada recalada, busca qué barco estaba cerca de Caldera y a baja
 velocidad dentro de una ventana de tiempo centrada en LANDING_DATETIME.
 
 Entradas:
-  data/bitacora/bitacora_caldera_jurel.csv
+  data/processing/capture/capture.csv
   data/filter/vms_near_caldera.csv
   data/filter/register_vms_bridge.csv
 
@@ -23,7 +23,7 @@ import pandas as pd
 
 
 DATA_DIR     = Path(__file__).resolve().parent.parent.parent / "data"
-BITACORA_CSV = DATA_DIR / "bitacora" / "bitacora_caldera_jurel.csv"
+BITACORA_CSV = DATA_DIR / "processing" / "capture" / "capture.csv"
 VMS_CSV      = DATA_DIR / "filter" / "vms_near_caldera.csv"
 BRIDGE_CSV   = DATA_DIR / "filter" / "register_vms_bridge.csv"
 OUTPUT_CSV   = DATA_DIR / "bitacora" / "bitacora_caldera_jurel_matched.csv"

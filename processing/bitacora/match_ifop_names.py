@@ -7,7 +7,7 @@ El nombre de la embarcación y su código interno IFOP provienen de las
 exportaciones HTML del SIEM Electrónico de IFOP (columna "Cód. Barco" con
 formato "<id interno> - <NOMBRE>", más la fecha de recalada y el puerto de
 recalada). Esos registros NO contienen el COD_BARCO anonimizado que usan
-data/bitacora/bitacora_full.csv y data/backup.csv.
+data/processing/capture/cleaned/capture.csv y data/backup.csv.
 
 El puente es la marca de tiempo de recalada: para cada recalada IFOP en
 Caldera buscamos en la bitácora (y en el respaldo) las recaladas de Caldera
@@ -24,7 +24,7 @@ data/bitacora/ifop_cod_barco_README.md para la derivación y las salvedades.
 
 Entradas:
   data/bitacora/ifop_siem/*.html      (exportaciones SIEM Electrónico IFOP)
-  data/bitacora/bitacora_full.csv     (COD_BARCO + LANDING_DATETIME + PORT)
+  data/processing/capture/cleaned/capture.csv  (COD_BARCO + LANDING_DATETIME + PORT)
   data/backup.csv                     (BARCO + FECHA_HORA_RECALADA + PUERTO)
 
 Salida:
@@ -46,7 +46,7 @@ import pandas as pd
 
 DATA_DIR      = Path(__file__).resolve().parent.parent.parent / "data"
 IFOP_HTML_DIR = DATA_DIR / "bitacora" / "ifop_siem"
-BITACORA_CSV  = DATA_DIR / "bitacora" / "bitacora_full.csv"
+BITACORA_CSV  = DATA_DIR / "processing" / "capture" / "cleaned" / "capture.csv"
 BACKUP_CSV    = DATA_DIR / "backup.csv"
 OUTPUT_CSV    = DATA_DIR / "bitacora" / "ifop_cod_barco_lookup.csv"
 

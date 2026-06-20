@@ -1,12 +1,19 @@
 """
-Normaliza data/bitacora.csv (bitácora IFOP) y escribe el resultado a
-data/bitacora/bitacora_full.csv.
+Normaliza la bitácora IFOP cruda y escribe el resultado a
+data/processing/capture/cleaned/capture.csv.
+
+Entrada:
+  data/processing/capture/input/bitacora.csv   (bitácora IFOP cruda)
+
+Salida:
+  data/processing/capture/cleaned/capture.csv
 
 Transformaciones aplicadas:
   - COD_BARCO se conserva tal cual (código interno asignado por IFOP, no hex).
   - LATITUD / LONGITUD (formato DDMMSS entero) → grados decimales, luego se
-    asigna el puerto más cercano según processing/bitacora/puertos_atacama.json
-    (columna PUERTO). Las columnas de coordenadas se eliminan del output.
+    asigna el puerto más cercano según
+    processing/capture/cleaning/puertos_atacama.json (columna PUERTO). Las
+    columnas de coordenadas se eliminan del output.
   - FECHA_HORA_RECALADA (formato americano M/D/YYYY HH:MM) → ISO YYYY-MM-DD HH:MM.
   - Nombres de columnas con punto y coma reemplazados por guion bajo,
     para no corromper el CSV de salida (delimitado con `;`).
@@ -25,10 +32,10 @@ from pathlib import Path
 import pandas as pd
 
 
-DATA_DIR = Path(__file__).resolve().parent.parent.parent / "data"
-INPUT_CSV = DATA_DIR / "bitacora.csv"
-OUTPUT_DIR = DATA_DIR / "bitacora"
-OUTPUT_CSV = OUTPUT_DIR / "bitacora_full.csv"
+DATA_DIR = Path(__file__).resolve().parents[3] / "data"
+INPUT_CSV = DATA_DIR / "processing" / "capture" / "input" / "bitacora.csv"
+OUTPUT_DIR = DATA_DIR / "processing" / "capture" / "cleaned"
+OUTPUT_CSV = OUTPUT_DIR / "capture.csv"
 PORTS_JSON = Path(__file__).resolve().parent / "puertos_atacama.json"
 
 REQUIRED_COLS = ["COD_BARCO", "FECHA_HORA_RECALADA", "LATITUD", "LONGITUD", "REGION"]
@@ -82,7 +89,7 @@ def main() -> None:
     if not INPUT_CSV.exists():
         print(
             f"ERROR: no se encontró {INPUT_CSV}.\n"
-            "       Verificá que data/bitacora.csv exista.",
+            "       Copiá ahí la bitácora IFOP cruda (bitacora.csv).",
             file=sys.stderr,
         )
         sys.exit(2)
