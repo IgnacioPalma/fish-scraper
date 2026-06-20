@@ -21,8 +21,8 @@ por robustez ante variantes de tipeo o cambios de prefijo en la señal.
 A cada ping conservado se le añaden `rpa` (el Nº RPA del registro) y
 `vessel_code` (el Cód. Barco interno IFOP, decimal), de modo que la salida queda
 trazable a la embarcación registrada. El `vessel_code` es además la llave con la
-que el paso de zarpes cruza los pings contra la tabla de zarpes de referencia
-(`data/processing/ifop/zarpes_atacama.csv`).
+que el paso de zarpes cruza los pings contra el dataset unificado de zarpes con
+captura (`data/output/zarpes_atacama_capture.csv`).
 
 Entrada:
   data/processing/locations/cleaned/locations_flota_artesanal_<rango>_cleaned.csv

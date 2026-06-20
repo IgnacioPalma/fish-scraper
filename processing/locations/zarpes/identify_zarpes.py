@@ -4,22 +4,24 @@ Agrupa las posiciones VMS de la flota del registro (`filter_registry.py`) en
 en vez de ping a ping.
 
 Definición de zarpe (criterio "ventana de zarpe de referencia"):
-  En vez de inferir el corte de viaje por el silencio de reporte, se usa la
-  tabla de zarpes de referencia de IFOP (`data/processing/ifop/zarpes_atacama.csv`):
-  cada zarpe trae `vessel_code` + `departure_datetime` / `arrival_datetime`
-  (hora real de zarpe y de recalada). Cada ping VMS se asigna al zarpe IFOP de
-  su MISMA embarcación (`vessel_code`) cuyo intervalo [zarpe, recalada] contiene
-  la fecha del ping; el `zarpe_id` resultante es el mismo de `zarpes_atacama.csv`,
-  de modo que la traza VMS de un viaje queda enlazada a su registro de muestreo.
+  En vez de inferir el corte de viaje por el silencio de reporte, se usa el
+  dataset unificado de zarpes con captura (`data/output/zarpes_atacama_capture.csv`,
+  producto del pipeline de captura): cada zarpe trae `vessel_code` +
+  `departure_datetime` / `arrival_datetime` (hora real de zarpe y de recalada).
+  Cada ping VMS se asigna al zarpe de su MISMA embarcación (`vessel_code`) cuyo
+  intervalo [zarpe, recalada] contiene la fecha del ping; el `zarpe_id` resultante
+  es el mismo de ese dataset (y de `zarpes_atacama.csv`), de modo que la traza VMS
+  de un viaje queda enlazada a su registro de muestreo y a su captura.
 
-  Los pings que no caen dentro de ninguna ventana de referencia (barco en puerto,
-  fuera de temporada, o sin zarpe IFOP) se descartan. A cada zarpe se le anota,
-  como contexto, el puerto más cercano a su primer y último ping.
+  Como la referencia son solo los zarpes con captura, los pings que no caen dentro
+  de ninguna ventana (barco en puerto, fuera de temporada, o sin zarpe con captura)
+  se descartan. A cada zarpe se le anota, como contexto, el puerto más cercano a su
+  primer y último ping.
 
 Entrada:
   data/processing/locations/filtered/locations_flota_artesanal_<rango>_registry.csv
-  data/processing/ifop/zarpes_atacama.csv   (zarpes de referencia: vessel_code + ventana)
-  processing/bitacora/puertos_atacama.json   (coordenadas de puertos)
+  data/output/zarpes_atacama_capture.csv   (zarpes con captura: vessel_code + ventana)
+  processing/capture/cleaning/puertos_atacama.json   (coordenadas de puertos)
 
 Salidas:
   data/processing/locations/zarpes/locations_flota_artesanal_<rango>_zarpes.csv
@@ -46,8 +48,8 @@ from processing.utils.locations_common import FLEET_NAME
 DATA_DIR = Path(__file__).resolve().parents[3] / "data" / "processing" / "locations"
 FILTERED_DIR = DATA_DIR / "filtered"
 OUTPUT_DIR = DATA_DIR / "zarpes"
-ZARPES_ATACAMA_CSV = DATA_DIR.parent / "ifop" / "zarpes_atacama.csv"
-PORTS_JSON = Path(__file__).resolve().parents[2] / "bitacora" / "puertos_atacama.json"
+UNIFIED_ZARPES_CSV = DATA_DIR.parent.parent / "output" / "zarpes_atacama_capture.csv"
+PORTS_JSON = Path(__file__).resolve().parents[2] / "capture" / "cleaning" / "puertos_atacama.json"
 
 EARTH_RADIUS_KM = 6371.0
 
@@ -219,18 +221,18 @@ def main() -> None:
         )
         sys.exit(1)
 
-    if not ZARPES_ATACAMA_CSV.exists():
+    if not UNIFIED_ZARPES_CSV.exists():
         print(
-            f"ERROR: no existe {ZARPES_ATACAMA_CSV}.\n"
-            "       Generá los zarpes de referencia primero con:\n"
-            "           uv run python -m processing.ifop.filter.filter_zarpes",
+            f"ERROR: no existe {UNIFIED_ZARPES_CSV}.\n"
+            "       Generá el dataset unificado de zarpes con captura primero con:\n"
+            "           uv run python -m processing.capture.unify.unify_zarpes",
             file=sys.stderr,
         )
         sys.exit(1)
 
     ports = json.loads(PORTS_JSON.read_text(encoding="utf-8"))
     df = pd.read_csv(input_csv, dtype=str)
-    refs = pd.read_csv(ZARPES_ATACAMA_CSV, dtype=str)
+    refs = pd.read_csv(UNIFIED_ZARPES_CSV, dtype=str)
 
     pings, resumen, stats = identificar(df, refs, ports)
 
@@ -240,7 +242,7 @@ def main() -> None:
 
     dur = pd.to_numeric(resumen["duration_h"], errors="coerce")
     print(
-        f"Identificando zarpes (ventana de zarpe de referencia: {ZARPES_ATACAMA_CSV.name})\n"
+        f"Identificando zarpes (ventana de zarpe de referencia: {UNIFIED_ZARPES_CSV.name})\n"
         f"  Entrada: {input_csv}\n"
         f"  Puertos (contexto): {', '.join(p['nombre'] for p in ports)}\n\n"
         f"Pings de entrada:                {len(df):,}\n"

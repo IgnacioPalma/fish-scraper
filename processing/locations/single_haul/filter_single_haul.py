@@ -2,16 +2,17 @@
 Recorta los zarpes VMS (`identify_zarpes.py`) a los viajes de UN solo lance.
 
 El nº de lances de cada zarpe no vive en la salida VMS (que es solo estadística
-de la traza), sino en la tabla de zarpes de referencia de IFOP
-(`data/processing/ifop/zarpes_atacama.csv`, columna `num_hauls`). Este paso
-cruza por `zarpe_id` —el mismo id de referencia que `identify_zarpes.py` ya
-asigna— y conserva únicamente los zarpes con `num_hauls == N_HAULS` (1), tanto
-en la tabla de pings como en la tabla resumen.
+de la traza), sino en el dataset unificado de zarpes con captura
+(`data/output/zarpes_atacama_capture.csv`, columna `num_hauls`) —la misma
+referencia que usa `identify_zarpes.py` para agrupar. Este paso cruza por
+`zarpe_id` —el mismo id de referencia que `identify_zarpes.py` ya asigna— y
+conserva únicamente los zarpes con `num_hauls == N_HAULS` (1), tanto en la tabla
+de pings como en la tabla resumen.
 
 Entrada:
   data/processing/locations/zarpes/locations_flota_artesanal_<rango>_zarpes.csv
   data/processing/locations/zarpes/zarpes_flota_artesanal_<rango>_summary.csv
-  data/processing/ifop/zarpes_atacama.csv   (columna num_hauls por zarpe_id)
+  data/output/zarpes_atacama_capture.csv   (columna num_hauls por zarpe_id)
 
 Salidas:
   data/processing/locations/single_haul/locations_flota_artesanal_<rango>_single_haul.csv
@@ -33,7 +34,7 @@ from processing.utils.locations_common import FLEET_NAME
 DATA_DIR = Path(__file__).resolve().parents[3] / "data" / "processing" / "locations"
 ZARPES_DIR = DATA_DIR / "zarpes"
 OUTPUT_DIR = DATA_DIR / "single_haul"
-ZARPES_ATACAMA_CSV = DATA_DIR.parent / "ifop" / "zarpes_atacama.csv"
+UNIFIED_ZARPES_CSV = DATA_DIR.parent.parent / "output" / "zarpes_atacama_capture.csv"
 
 # Nº de lances que define el filtro (zarpes de un solo lance).
 N_HAULS = 1
@@ -84,7 +85,7 @@ def main() -> None:
     for ruta, hint in (
         (pings_csv, "uv run python -m processing.locations.zarpes.identify_zarpes"),
         (summary_csv, "uv run python -m processing.locations.zarpes.identify_zarpes"),
-        (ZARPES_ATACAMA_CSV, "uv run python -m processing.ifop.filter.filter_zarpes"),
+        (UNIFIED_ZARPES_CSV, "uv run python -m processing.capture.unify.unify_zarpes"),
     ):
         if not ruta.exists():
             print(
@@ -96,7 +97,7 @@ def main() -> None:
 
     pings = pd.read_csv(pings_csv, dtype=str)
     resumen = pd.read_csv(summary_csv, dtype=str)
-    refs = pd.read_csv(ZARPES_ATACAMA_CSV, dtype=str)
+    refs = pd.read_csv(UNIFIED_ZARPES_CSV, dtype=str)
 
     pings_out, resumen_out, stats = filtrar(pings, resumen, refs)
 
@@ -106,7 +107,7 @@ def main() -> None:
 
     print(
         f"Filtrando zarpes a num_hauls == {N_HAULS} (un solo lance)\n"
-        f"  Referencia num_hauls: {ZARPES_ATACAMA_CSV}\n\n"
+        f"  Referencia num_hauls: {UNIFIED_ZARPES_CSV}\n\n"
         f"Zarpes de entrada:        {stats['zarpes_entrada']:,}\n"
         f"  con un solo lance:      {stats['zarpes_un_lance']:,}\n"
         f"Pings de entrada:         {stats['pings_entrada']:,}\n"

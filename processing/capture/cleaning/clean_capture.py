@@ -9,7 +9,11 @@ Salida:
   data/processing/capture/cleaned/capture.csv
 
 Transformaciones aplicadas:
-  - COD_BARCO se conserva tal cual (código interno asignado por IFOP, no hex).
+  - COD_BARCO se conserva tal cual (código hexadecimal de la bitácora IFOP) y se
+    deriva `vessel_code` = `int(COD_BARCO, 16) − 5` (el "Cód. Barco" decimal
+    interno de IFOP). Es la inversa de la fórmula de
+    processing/ifop/identifiers/extract_vessels.py y la llave para cruzar con los
+    zarpes de referencia IFOP. Ver data/bitacora/ifop_cod_barco_README.md.
   - LATITUD / LONGITUD (formato DDMMSS entero) → grados decimales, luego se
     asigna el puerto más cercano según
     processing/capture/cleaning/puertos_atacama.json (columna PUERTO). Las
@@ -40,6 +44,12 @@ PORTS_JSON = Path(__file__).resolve().parent / "puertos_atacama.json"
 
 REQUIRED_COLS = ["COD_BARCO", "FECHA_HORA_RECALADA", "LATITUD", "LONGITUD", "REGION"]
 
+# Desplazamiento constante de la fórmula COD_BARCO = HEX(vessel_code + OFFSET).
+# vessel_code = int(COD_BARCO, 16) − OFFSET. Inversa de
+# processing/ifop/identifiers/extract_vessels.py:cod_barco_desde_id.
+# Ver data/bitacora/ifop_cod_barco_README.md.
+COD_BARCO_OFFSET = 5
+
 COLUMN_RENAME = {
     "AÑO":               "YEAR",
     "REGION":            "REGION",
@@ -69,6 +79,17 @@ def _ddmmss_to_decimal(series: pd.Series) -> pd.Series:
     minutos = (val % 10000) // 100
     segundos = val % 100
     return grados + minutos / 60 + segundos / 3600
+
+
+def _vessel_code_desde_cod_barco(cod: str):
+    """COD_BARCO hexadecimal → vessel_code decimal (id_interno IFOP), como texto.
+
+    Devuelve pd.NA si el código no es un hexadecimal válido.
+    """
+    try:
+        return str(int(cod, 16) - COD_BARCO_OFFSET)
+    except (ValueError, TypeError):
+        return pd.NA
 
 
 def _nearest_port(lat: float, lon: float, ports: list) -> str:
@@ -124,8 +145,11 @@ def main() -> None:
     df["AÑO"] = df["AÑO"].astype(int)
     df["REGION"] = df["REGION"].astype(int)
 
-    # COD_BARCO: código interno de embarcación asignado por IFOP (no es hex).
+    # COD_BARCO: código hexadecimal de la bitácora IFOP. Se deriva vessel_code
+    # (el "Cód. Barco" decimal interno de IFOP) por la inversa de la fórmula.
     df["COD_BARCO"] = df["COD_BARCO"].astype(str).str.strip()
+    df["vessel_code"] = df["COD_BARCO"].map(_vessel_code_desde_cod_barco)
+    n_cod_invalido = int(df["vessel_code"].isna().sum())
 
     # Fecha: M/D/YYYY HH:MM → ISO YYYY-MM-DD HH:MM.
     dt = pd.to_datetime(df["FECHA_HORA_RECALADA"], format="%m/%d/%Y %H:%M", errors="coerce")
@@ -143,7 +167,7 @@ def main() -> None:
     df = df.drop(columns=["LATITUD", "LONGITUD"])
 
     # Reordenar antes de renombrar (usando nombres originales como referencia).
-    front = ["AÑO", "REGION", "COD_BARCO", "FECHA_HORA_RECALADA", "PUERTO"]
+    front = ["AÑO", "REGION", "COD_BARCO", "vessel_code", "FECHA_HORA_RECALADA", "PUERTO"]
     cols = front + [c for c in df.columns if c not in front]
     df = df[cols]
 
@@ -163,6 +187,7 @@ def main() -> None:
         f"Filas en entrada:            {total:,}\n"
         f"Filas sin región descartadas:{n_sin_region:,}\n"
         f"Fechas inválidas descartadas:{n_fechas_invalidas:,}\n"
+        f"COD_BARCO no hex (vessel_code nulo): {n_cod_invalido:,}\n"
         f"Filas escritas:              {len(df):,}\n"
         f"Archivo escrito:             {OUTPUT_CSV}"
     )
