@@ -23,6 +23,9 @@ Cada etapa también se puede correr por separado (ver abajo).
 | 2 | `cleaning.clean_viajes` | CSV crudo de la etapa 1 | `data/processing/ifop/cleaned/ifop_cleaned.csv` |
 | 3 | `identifiers.extract_ports` | CSV limpio de la etapa 2 | `data/processing/ifop/ports.csv` |
 | 3 | `identifiers.extract_vessels` | CSV limpio de la etapa 2 | `data/processing/ifop/vessels.csv` |
+| 3 | `identifiers.extract_species` | CSV limpio de la etapa 2 | `data/processing/ifop/species.csv` |
+| 3 | `identifiers.extract_zarpes` | CSV limpio de la etapa 2 | `data/processing/ifop/zarpes.csv` |
+| 4 | `filter.filter_zarpes` | `zarpes.csv` + `ports.csv` | `data/processing/ifop/zarpes_atacama.csv` |
 
 ### 1. Scraping — `processing/ifop/scraper/`
 
@@ -65,8 +68,29 @@ A partir del CSV limpio:
 - `extract_vessels.py` → `vessels.csv` (`vessel_code`, `vessel_name`,
   `cod_barco`). El `cod_barco` se deriva con la fórmula
   `COD_BARCO = HEX(vessel_code + 5)`.
+- `extract_species.py` → `species.csv` (`species_id`, `species_name`), una fila
+  por especie objetivo.
+- `extract_zarpes.py` → `zarpes.csv`, una fila por zarpe (viaje) deduplicado:
+  `departure_datetime`, `arrival_datetime`, `vessel_code`, `departure_port_id`,
+  `arrival_port_id`, `target_species_id`, `num_hauls`. Es una tabla de hechos
+  que referencia a `vessels.csv` / `ports.csv` / `species.csv`.
 
 ```bash
 uv run python -m processing.ifop.identifiers.extract_ports
 uv run python -m processing.ifop.identifiers.extract_vessels
+uv run python -m processing.ifop.identifiers.extract_species
+uv run python -m processing.ifop.identifiers.extract_zarpes
+```
+
+### 4. Filtro de zarpes a Atacama — `processing/ifop/filter/`
+
+`filter_zarpes.py` recorta `zarpes.csv` a los viajes cuya **recalada** cae en un
+puerto de la Región de Atacama (`ATACAMA_PORT_NAMES` en
+[processing/utils/ports.py](../utils/ports.py): Chañaral, Caldera, Huasco,
+Carrizal Bajo, Chañaral de Aceituno) y le asigna un `zarpe_id` correlativo. No
+filtra por especie (muchos zarpes de Atacama no traen especie objetivo). El
+cruce nombre de puerto → id se hace contra `ports.csv` (comparación sin tildes).
+
+```bash
+uv run python -m processing.ifop.filter.filter_zarpes
 ```

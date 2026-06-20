@@ -3,7 +3,8 @@ Orquesta el pipeline IFOP de punta a punta, ejecutando cada etapa en orden:
 
   1. scraper       → data/processing/ifop/raw/viajes_observadores.csv
   2. cleaning      → data/processing/ifop/cleaned/ifop_cleaned.csv
-  3. identifiers   → data/processing/ifop/ports.csv  +  data/processing/ifop/vessels.csv
+  3. identifiers   → data/processing/ifop/{ports,vessels,species,zarpes}.csv
+  4. filter        → data/processing/ifop/zarpes_atacama.csv
 
 Cada etapa es el `main()` del módulo correspondiente; si una falla aborta con
 código distinto de cero (las etapas ya imprimen una pista en stderr), el
@@ -25,7 +26,7 @@ def _etapa(titulo: str) -> None:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Pipeline IFOP (scraper → cleaning → identifiers).")
+    parser = argparse.ArgumentParser(description="Pipeline IFOP (scraper → cleaning → identifiers → filter).")
     parser.add_argument(
         "--skip-scrape", action="store_true",
         help="No re-scrapear el SIEM; reutilizar el CSV crudo existente.",
@@ -35,18 +36,26 @@ def main() -> None:
     if args.skip_scrape:
         print("(--skip-scrape: se omite el scraping; se reutiliza el CSV crudo existente)")
     else:
-        _etapa("1/3 · Scraping del SIEM IFOP")
+        _etapa("1/4 · Scraping del SIEM IFOP")
         from processing.ifop.scraper import scrape_siem
         scrape_siem.main()
 
-    _etapa("2/3 · Limpieza de viajes")
+    _etapa("2/4 · Limpieza de viajes")
     from processing.ifop.cleaning import clean_viajes
     clean_viajes.main()
 
-    _etapa("3/3 · Tablas de identificadores (puertos + embarcaciones)")
-    from processing.ifop.identifiers import extract_ports, extract_vessels
+    _etapa("3/4 · Tablas de identificadores (puertos + embarcaciones + especies + zarpes)")
+    from processing.ifop.identifiers import (
+        extract_ports, extract_vessels, extract_species, extract_zarpes,
+    )
     extract_ports.main()
     extract_vessels.main()
+    extract_species.main()
+    extract_zarpes.main()
+
+    _etapa("4/4 · Filtro de zarpes a la Región de Atacama (recalada)")
+    from processing.ifop.filter import filter_zarpes
+    filter_zarpes.main()
 
     _etapa("Pipeline IFOP completo")
 

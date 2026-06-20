@@ -18,8 +18,11 @@ y coinciden sin conflicto: para cada barco emparejado por nombre, el
 `signal_code` es igual a los dígitos de su `radio_call_sign`. Se cruzan ambas
 por robustez ante variantes de tipeo o cambios de prefijo en la señal.
 
-A cada ping conservado se le añade `rpa` (el Nº RPA del registro), de modo que
-la salida queda trazable a la embarcación registrada.
+A cada ping conservado se le añaden `rpa` (el Nº RPA del registro) y
+`vessel_code` (el Cód. Barco interno IFOP, decimal), de modo que la salida queda
+trazable a la embarcación registrada. El `vessel_code` es además la llave con la
+que el paso de zarpes cruza los pings contra la tabla de zarpes de referencia
+(`data/processing/ifop/zarpes_atacama.csv`).
 
 Entrada:
   data/processing/locations/cleaned/locations_flota_artesanal_<rango>_cleaned.csv
@@ -74,8 +77,8 @@ def _solo_digitos(serie: pd.Series) -> pd.Series:
 
 
 def filtrar(loc: pd.DataFrame, reg: pd.DataFrame) -> tuple[pd.DataFrame, dict[str, int]]:
-    """Conserva los pings de barcos del registro y les añade `rpa`."""
-    # Mapas señal→RPA y nombre_normalizado→RPA desde el registro.
+    """Conserva los pings de barcos del registro y les añade `rpa` y `vessel_code`."""
+    # Mapas señal→{RPA,vessel_code} y nombre_normalizado→{RPA,vessel_code}.
     reg = reg.copy()
     reg["_signal"] = reg["signal_code"].fillna("").astype(str).str.strip()
     reg["_name"] = _normalizar_nombre(reg["vessel_name"])
@@ -85,6 +88,11 @@ def filtrar(loc: pd.DataFrame, reg: pd.DataFrame) -> tuple[pd.DataFrame, dict[st
     name_to_rpa = dict(zip(reg["_name"], reg["RPA"]))
     name_to_rpa.pop("", None)
 
+    signal_to_code = dict(zip(reg["_signal"], reg["vessel_code"]))
+    signal_to_code.pop("", None)
+    name_to_code = dict(zip(reg["_name"], reg["vessel_code"]))
+    name_to_code.pop("", None)
+
     rc_digits = _solo_digitos(loc["radio_call_sign"])
     name_norm = _normalizar_nombre(loc["vessel_name"])
 
@@ -93,8 +101,11 @@ def filtrar(loc: pd.DataFrame, reg: pd.DataFrame) -> tuple[pd.DataFrame, dict[st
 
     # Preferir la señal (exacta) y caer al nombre si la señal no coincidió.
     rpa = rpa_por_senal.fillna(rpa_por_nombre)
+    vessel_code = rc_digits.map(signal_to_code).fillna(name_norm.map(name_to_code))
 
     out = loc.copy()
+    # vessel_code primero para que quede inmediatamente después de rpa tras el insert.
+    out.insert(0, "vessel_code", vessel_code)
     out.insert(0, "rpa", rpa)
     keep = out["rpa"].notna()
 

@@ -3,29 +3,27 @@ Agrupa las posiciones VMS de la flota del registro (`filter_registry.py`) en
 "zarpes" (viajes de pesca), para poder analizar la actividad a nivel de viaje
 en vez de ping a ping.
 
-Definición de zarpe (criterio "hueco de reporte"):
-  La cadencia normal del VMS mar adentro es de ~8-15 min entre pings. Cuando la
-  embarcación recala, el transpondedor deja de reportar mientras está en puerto
-  (en estos datos los pings casi nunca llegan al muelle: el más cercano queda a
-  ~1 km y solo ~480 de 165 000 caen a <= 5 km a baja velocidad). Por eso el
-  corte de viaje NO se puede detectar por cercanía a puerto, sino por el SILENCIO
-  de reporte: un hueco > GAP_HOURS entre pings marca una estadía en puerto.
+Definición de zarpe (criterio "ventana de zarpe de referencia"):
+  En vez de inferir el corte de viaje por el silencio de reporte, se usa la
+  tabla de zarpes de referencia de IFOP (`data/processing/ifop/zarpes_atacama.csv`):
+  cada zarpe trae `vessel_code` + `departure_datetime` / `arrival_datetime`
+  (hora real de zarpe y de recalada). Cada ping VMS se asigna al zarpe IFOP de
+  su MISMA embarcación (`vessel_code`) cuyo intervalo [zarpe, recalada] contiene
+  la fecha del ping; el `zarpe_id` resultante es el mismo de `zarpes_atacama.csv`,
+  de modo que la traza VMS de un viaje queda enlazada a su registro de muestreo.
 
-  Un zarpe es la corrida de pings consecutivos de una misma embarcación cuyos
-  saltos temporales son <= GAP_HOURS. Un hueco mayor (o el cambio de barco)
-  abre un zarpe nuevo. A cada zarpe se le anota, como contexto, el puerto más
-  cercano a su primer y último ping (puerto de zarpe / de recalada aproximados).
-
-Se descartan como ruido los zarpes con menos de MIN_TRIP_PINGS pings; los
-válidos se renumeran 1..N por orden cronológico.
+  Los pings que no caen dentro de ninguna ventana de referencia (barco en puerto,
+  fuera de temporada, o sin zarpe IFOP) se descartan. A cada zarpe se le anota,
+  como contexto, el puerto más cercano a su primer y último ping.
 
 Entrada:
   data/processing/locations/filtered/locations_flota_artesanal_<rango>_registry.csv
+  data/processing/ifop/zarpes_atacama.csv   (zarpes de referencia: vessel_code + ventana)
   processing/bitacora/puertos_atacama.json   (coordenadas de puertos)
 
 Salidas:
   data/processing/locations/zarpes/locations_flota_artesanal_<rango>_zarpes.csv
-      → los pings de entrada + dist_port_km, nearest_port, zarpe_id
+      → los pings asignados a un zarpe + dist_port_km, nearest_port, zarpe_id
   data/processing/locations/zarpes/zarpes_flota_artesanal_<rango>_summary.csv
       → una fila por zarpe (inicio/fin, duración, nº pings, distancia máx. a
         puerto, distancia recorrida, puerto de zarpe/recalada aproximados, etc.)
@@ -48,11 +46,8 @@ from processing.utils.locations_common import FLEET_NAME
 DATA_DIR = Path(__file__).resolve().parents[3] / "data" / "processing" / "locations"
 FILTERED_DIR = DATA_DIR / "filtered"
 OUTPUT_DIR = DATA_DIR / "zarpes"
+ZARPES_ATACAMA_CSV = DATA_DIR.parent / "ifop" / "zarpes_atacama.csv"
 PORTS_JSON = Path(__file__).resolve().parents[2] / "bitacora" / "puertos_atacama.json"
-
-# Umbrales del criterio de zarpe (constantes ajustables).
-GAP_HOURS = 6.0        # silencio de reporte que separa dos viajes (estadía en puerto)
-MIN_TRIP_PINGS = 2     # zarpes con menos pings se descartan como ruido
 
 EARTH_RADIUS_KM = 6371.0
 
@@ -85,49 +80,80 @@ def _dist_a_puertos(lat, lon, ports):
     return dist_min, nombres[idx_min]
 
 
-def identificar(df: pd.DataFrame, ports: list[dict]) -> tuple[pd.DataFrame, pd.DataFrame, dict]:
-    """Etiqueta los pings con zarpe_id y construye la tabla resumen por zarpe."""
+def _asignar_zarpe(df: pd.DataFrame, refs: pd.DataFrame) -> pd.DataFrame:
+    """Asigna a cada ping el zarpe_id de referencia cuya ventana lo contiene.
+
+    Cruce por `vessel_code` + ventana temporal: para cada ping se toma el zarpe
+    de referencia del mismo barco con el `departure_datetime` más reciente <=
+    fecha del ping (merge_asof hacia atrás), y se conserva solo si la fecha del
+    ping es <= `arrival_datetime` de ese zarpe. Los pings que no caen en ninguna
+    ventana quedan con zarpe_id nulo.
+    """
+    refs = refs[["zarpe_id", "vessel_code", "departure_datetime", "arrival_datetime"]].copy()
+    refs["vessel_code"] = refs["vessel_code"].astype(str).str.strip()
+    refs["_dep"] = pd.to_datetime(refs["departure_datetime"], errors="coerce")
+    refs["_arr"] = pd.to_datetime(refs["arrival_datetime"], errors="coerce")
+    refs = refs.dropna(subset=["vessel_code", "_dep", "_arr"]).sort_values("_dep")
+
+    izq = df.reset_index().sort_values("_dt")  # 'index' preserva el orden original
+    matched = pd.merge_asof(
+        izq, refs[["zarpe_id", "vessel_code", "_dep", "_arr"]],
+        left_on="_dt", right_on="_dep", by="vessel_code", direction="backward",
+    )
+    dentro = matched["_dt"] <= matched["_arr"]
+    matched.loc[~dentro, "zarpe_id"] = pd.NA
+
+    out = df.copy()
+    out["zarpe_id"] = matched.set_index("index")["zarpe_id"].reindex(out.index)
+    out["zarpe_id"] = pd.to_numeric(out["zarpe_id"], errors="coerce").astype("Int64")
+    return out
+
+
+def identificar(df: pd.DataFrame, refs: pd.DataFrame,
+                ports: list[dict]) -> tuple[pd.DataFrame, pd.DataFrame, dict]:
+    """Etiqueta los pings con zarpe_id (de referencia) y arma el resumen por zarpe."""
     df = df.copy()
     df["latitude"] = pd.to_numeric(df["latitude"], errors="coerce")
     df["longitude"] = pd.to_numeric(df["longitude"], errors="coerce")
     df["speed_kt"] = pd.to_numeric(df["speed_kt"], errors="coerce")
     df["_dt"] = pd.to_datetime(df["location_datetime"], errors="coerce")
+    df["vessel_code"] = df["vessel_code"].fillna("").astype(str).str.strip()
 
     n_in = len(df)
     df = df.dropna(subset=["latitude", "longitude", "_dt"])
-    n_sin_tiempo = n_in - len(df)
+    df = df[df["vessel_code"] != ""]
+    n_sin_datos = n_in - len(df)
 
-    df = df.sort_values(["rpa", "_dt"], kind="stable").reset_index(drop=True)
+    # Asignar el zarpe de referencia y descartar los pings sin zarpe.
+    df = _asignar_zarpe(df, refs)
+    n_emparejables = len(df)
+    df = df[df["zarpe_id"].notna()].copy()
+    n_sin_zarpe = n_emparejables - len(df)
 
-    # Distancia al puerto más cercano (solo contexto, no define el viaje).
+    # Ordenar por zarpe (cronológico dentro del viaje) para los cálculos de tramo.
+    df = df.sort_values(["zarpe_id", "_dt"], kind="stable").reset_index(drop=True)
+
+    # Distancia al puerto más cercano (solo contexto).
     df["dist_port_km"], df["nearest_port"] = _dist_a_puertos(
         df["latitude"], df["longitude"], ports
     )
 
-    # Corte de viaje: hueco de reporte > GAP_HOURS o cambio de barco (gap NaN).
-    gap_h = df.groupby("rpa")["_dt"].diff().dt.total_seconds() / 3600.0
-    df["_gap_before_h"] = gap_h
-    new_trip = gap_h.isna() | (gap_h > GAP_HOURS)
-    df["_trip_key"] = new_trip.cumsum()
-
-    # Tramo en km entre pings consecutivos del mismo viaje (distancia recorrida).
+    # Tramo en km entre pings consecutivos del mismo zarpe (distancia recorrida).
     step_km = _haversine(
         df["latitude"].shift(), df["longitude"].shift(),
         df["latitude"], df["longitude"],
     )
-    same_trip = df["_trip_key"].eq(df["_trip_key"].shift())
+    same_trip = df["zarpe_id"].eq(df["zarpe_id"].shift()).fillna(False)
     df["_step_km"] = np.where(same_trip, step_km, 0.0)
 
-    grp = df.groupby("_trip_key", sort=False)
+    grp = df.groupby("zarpe_id", sort=True)
     resumen = grp.agg(
         rpa=("rpa", "first"),
+        vessel_code=("vessel_code", "first"),
         vessel_name=("vessel_name", "first"),
         start_datetime=("_dt", "min"),
         end_datetime=("_dt", "max"),
         n_pings=("_dt", "size"),
-        # iloc[0], no "first": el primer viaje de cada barco tiene gap NaN y
-        # "first" lo saltaría devolviendo la cadencia del 2º ping (~8 min).
-        gap_before_h=("_gap_before_h", lambda s: s.iloc[0]),
         max_dist_km=("dist_port_km", "max"),
         track_km=("_step_km", "sum"),
         mean_speed_kt=("speed_kt", "mean"),
@@ -144,19 +170,9 @@ def identificar(df: pd.DataFrame, ports: list[dict]) -> tuple[pd.DataFrame, pd.D
         (resumen["end_datetime"] - resumen["start_datetime"]).dt.total_seconds() / 3600.0
     )
 
-    # Descartar ruido (zarpes de un solo ping) y renumerar 1..N cronológicamente.
-    n_total = len(resumen)
-    valido = resumen["n_pings"] >= MIN_TRIP_PINGS
-    n_descartados = int((~valido).sum())
-    resumen = resumen[valido].sort_values(["rpa", "start_datetime"]).reset_index(drop=True)
-    resumen.insert(0, "zarpe_id", np.arange(1, len(resumen) + 1))
-
-    key_to_id = dict(zip(resumen["_trip_key"], resumen["zarpe_id"]))
-    df["zarpe_id"] = df["_trip_key"].map(key_to_id).astype("Int64")
-
     # Redondeos de presentación.
     df["dist_port_km"] = df["dist_port_km"].round(3)
-    for col, nd in [("gap_before_h", 2), ("max_dist_km", 3), ("track_km", 3),
+    for col, nd in [("max_dist_km", 3), ("track_km", 3),
                     ("mean_speed_kt", 2), ("max_speed_kt", 2),
                     ("centroid_lat", 5), ("centroid_lon", 5),
                     ("start_dist_km", 3), ("end_dist_km", 3), ("duration_h", 2)]:
@@ -165,22 +181,22 @@ def identificar(df: pd.DataFrame, ports: list[dict]) -> tuple[pd.DataFrame, pd.D
         resumen[col] = resumen[col].dt.strftime("%Y-%m-%d %H:%M:%S")
 
     pings_cols = [
-        "zarpe_id", "rpa", "vessel_name", "radio_call_sign", "location_datetime",
-        "latitude", "longitude", "heading", "speed_kt", "dist_port_km", "nearest_port",
+        "zarpe_id", "rpa", "vessel_code", "vessel_name", "radio_call_sign",
+        "location_datetime", "latitude", "longitude", "heading", "speed_kt",
+        "dist_port_km", "nearest_port",
     ]
     resumen_cols = [
-        "zarpe_id", "rpa", "vessel_name", "start_datetime", "end_datetime",
-        "duration_h", "gap_before_h", "n_pings", "max_dist_km", "track_km",
+        "zarpe_id", "rpa", "vessel_code", "vessel_name", "start_datetime",
+        "end_datetime", "duration_h", "n_pings", "max_dist_km", "track_km",
         "mean_speed_kt", "max_speed_kt", "centroid_lat", "centroid_lon",
         "start_port", "start_dist_km", "end_port", "end_dist_km",
     ]
 
     stats = {
-        "sin_tiempo": n_sin_tiempo,
-        "zarpes_provisionales": n_total,
-        "zarpes_descartados": n_descartados,
+        "sin_datos": n_sin_datos,
+        "sin_zarpe": n_sin_zarpe,
+        "pings_en_zarpe": len(df),
         "zarpes_validos": len(resumen),
-        "pings_en_zarpe": int(df["zarpe_id"].notna().sum()),
     }
     return df[pings_cols], resumen[resumen_cols], stats
 
@@ -203,10 +219,20 @@ def main() -> None:
         )
         sys.exit(1)
 
+    if not ZARPES_ATACAMA_CSV.exists():
+        print(
+            f"ERROR: no existe {ZARPES_ATACAMA_CSV}.\n"
+            "       Generá los zarpes de referencia primero con:\n"
+            "           uv run python -m processing.ifop.filter.filter_zarpes",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
     ports = json.loads(PORTS_JSON.read_text(encoding="utf-8"))
     df = pd.read_csv(input_csv, dtype=str)
+    refs = pd.read_csv(ZARPES_ATACAMA_CSV, dtype=str)
 
-    pings, resumen, stats = identificar(df, ports)
+    pings, resumen, stats = identificar(df, refs, ports)
 
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     pings.to_csv(pings_csv, index=False)
@@ -214,15 +240,14 @@ def main() -> None:
 
     dur = pd.to_numeric(resumen["duration_h"], errors="coerce")
     print(
-        f"Identificando zarpes (corte por hueco de reporte > {GAP_HOURS} h)\n"
+        f"Identificando zarpes (ventana de zarpe de referencia: {ZARPES_ATACAMA_CSV.name})\n"
         f"  Entrada: {input_csv}\n"
         f"  Puertos (contexto): {', '.join(p['nombre'] for p in ports)}\n\n"
         f"Pings de entrada:                {len(df):,}\n"
-        f"  sin fecha/coords (descartados):{stats['sin_tiempo']:,}\n"
+        f"  sin fecha/coords/vessel_code:  {stats['sin_datos']:,}\n"
+        f"  sin zarpe de referencia:       {stats['sin_zarpe']:,}\n"
         f"  asignados a un zarpe:          {stats['pings_en_zarpe']:,}\n"
-        f"Zarpes detectados:               {stats['zarpes_provisionales']:,}\n"
-        f"  descartados (1 ping):          {stats['zarpes_descartados']:,}\n"
-        f"  válidos:                       {stats['zarpes_validos']:,}\n"
+        f"Zarpes de referencia cubiertos:  {stats['zarpes_validos']:,}\n"
         f"Duración (h) — mediana / p90:    {dur.median():.1f} / {dur.quantile(0.9):.1f}\n"
         f"Archivos escritos:\n"
         f"  {pings_csv}\n"
