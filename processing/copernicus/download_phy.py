@@ -5,7 +5,7 @@ GLOBAL_MULTIYEAR_PHY_001_030. De ese producto extrae:
 
     - mlotst       : Mixed Layer Depth (m), superficial.
     - so_0m        : salinidad practica en superficie (PSU).
-    - thetao_400m  : temperatura potencial a ~400 m de profundidad (°C).
+    - thetao_200m  : temperatura potencial a ~200 m de profundidad (°C).
 
 Las dos últimas se obtienen seleccionando el nivel de profundidad más
 cercano dentro del subconjunto descargado. El resultado se regrilla a la
@@ -58,15 +58,17 @@ PRODUCT_START_DATE = date(1993, 1, 1)
 PRODUCT_END_DATE = date(2026, 4, 28)
 
 # Rango vertical del subset: necesitamos superficie (so, thetao en 0 m,
-# y mlotst que es 2-D) y un nivel cercano a 400 m (thetao_400m). Pedir
-# todo el rango 0–400 m en una sola llamada y reducir en post-proceso
-# es más simple que hacer dos descargas separadas.
+# y mlotst que es 2-D) y un nivel cercano a 200 m (thetao_200m). Pedir
+# todo el rango 0–200 m en una sola llamada y reducir en post-proceso
+# es más simple que hacer dos descargas separadas. Se usa 200 m (y no
+# 400 m) porque el nivel de 400 m no existe donde el fondo es más somero
+# —toda la franja costera— y forzaba un fallback de hasta 20 km mar adentro.
 DEPTH_MIN = 0.0
-DEPTH_MAX = 400.0
+DEPTH_MAX = 200.0
 
 # Profundidades objetivo para la reducción a campos 2-D.
 DEPTH_SURFACE = 0.0
-DEPTH_DEEP = 400.0
+DEPTH_DEEP = 200.0
 
 OUTPUT_DIR = str(Path(__file__).resolve().parent.parent.parent / "data" / "copernicus")
 FILENAME_BASE = "phy_atacama"
@@ -76,7 +78,7 @@ FILENAME_BASE = "phy_atacama"
 OUTPUT_VARIABLES = {
     "mlotst": "m",
     "so_0m": "PSU",
-    "thetao_400m": "°C",
+    "thetao_200m": "°C",
 }
 
 
@@ -149,12 +151,12 @@ def regrid_and_export(nc_path: str, csv_path: str) -> str:
     # so y thetao tienen dimensión de profundidad; mlotst no.
     ds = ds.assign(
         so_0m=_select_level(ds["so"], DEPTH_SURFACE),
-        thetao_400m=_select_level(ds["thetao"], DEPTH_DEEP),
+        thetao_200m=_select_level(ds["thetao"], DEPTH_DEEP),
     ).drop_vars(["so", "thetao"])
 
     # Tras el sel/drop anterior ya no hay variables que usen la dim
     # `depth`, pero la coord aún vive a nivel de Dataset con N niveles
-    # (los del subset 0–400 m). La eliminamos para que `to_netcdf` y
+    # (los del subset 0–200 m). La eliminamos para que `to_netcdf` y
     # `to_dataframe` queden limpios y la dim `depth` no aparezca en
     # los archivos de salida.
     if "depth" in ds.coords:
