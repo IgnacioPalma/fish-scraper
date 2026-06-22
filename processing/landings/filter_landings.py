@@ -15,6 +15,7 @@ que está hoy: 2023). Para incluir varios años, ampliá END_DATE — el filtro
 se aplica por año completo, no recorta meses en los bordes del rango.
 """
 
+import re
 import sys
 from pathlib import Path
 
@@ -34,6 +35,17 @@ TIPO_AGENTE = "Artesanal"
 ESPECIE = "Jurel"
 
 REQUIRED_COLS = ["ano", "region", "tipo_agente", "especie", "toneladas"]
+
+
+def _fold(s: str) -> str:
+    """Normaliza un nombre de región para comparar de forma tolerante.
+
+    `desembarques.csv` trae los nombres acentuados corruptos (el acento quedó como
+    uno o más bytes basura, p.ej. "Aysén" → "Aysï¿½n"). Bajamos a minúsculas y
+    colapsamos cualquier corrida de caracteres no-ASCII a un único "?", de modo que
+    el nombre limpio del perfil ("Aysén" → "ays?n") calce con el corrupto
+    ("aysï¿½n" → "ays?n")."""
+    return re.sub(r"[^\x00-\x7f]+", "?", str(s).lower())
 
 
 def main() -> None:
@@ -61,9 +73,10 @@ def main() -> None:
     total = len(df)
 
     years = list(range(START_DATE.year, END_DATE.year + 1))
+    objetivo_region = {_fold(n) for n in REGION_NAMES}
     mask = (
         df["ano"].isin(years)
-        & (df["region"].isin(REGION_NAMES))
+        & (df["region"].map(_fold).isin(objetivo_region))
         & (df["tipo_agente"] == TIPO_AGENTE)
         & (df["especie"] == ESPECIE)
     )

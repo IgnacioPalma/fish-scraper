@@ -13,5 +13,5 @@ reconstruí la imagen Docker (`docker compose run --rm --build <servicio>`).
 from datetime import date
 
 
-START_DATE = date(2023, 1, 1)
+START_DATE = date(2022, 1, 1)
 END_DATE = date(2024, 12, 31)
