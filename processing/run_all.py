@@ -21,14 +21,19 @@ aborta ahí (las etapas ya imprimen una pista en stderr).
 
 Las etapas de scraping/descarga son lentas y necesitan red (y credenciales en
 `.env`). Con los flags se reutilizan los datos ya bajados:
-  --skip-scrape         omite TODOS los scrapers (IFOP + Sernapesca + descarga VMS diaria).
-  --skip-ifop-scrape    omite SOLO el scraper IFOP (el más lento: abre navegador y
-                        recorre el SIEM); deja correr los demás scrapers.
-  --skip-download       omite la descarga de las grillas Copernicus (SST/CHL/PHY/BGC).
+  --skip-scrape           omite TODOS los scrapers (IFOP + Sernapesca + descarga VMS diaria).
+  --skip-ifop-scrape      omite SOLO el scraper IFOP (el más lento: abre navegador y
+                          recorre el SIEM); deja correr los demás scrapers.
+  --skip-registry-scrape  omite SOLO el scraper inicial del registro nacional (etapa 1
+                          del pipeline de registro); la consulta por RPA (etapa 6) sí corre.
+  --skip-download         omite la descarga de las grillas Copernicus (SST/CHL/PHY/BGC).
 
 Uso:
     uv run python -m processing.run_all
     uv run python -m processing.run_all --skip-ifop-scrape
+    # Pipeline completo SIN los dos scrapers iniciales pesados (IFOP SIEM +
+    # registro nacional); reutiliza sus crudos y corre todo lo demás:
+    uv run python -m processing.run_all --skip-ifop-scrape --skip-registry-scrape
     uv run python -m processing.run_all --skip-scrape
     uv run python -m processing.run_all --skip-scrape --skip-download
 """
@@ -76,6 +81,11 @@ def main() -> None:
         help="Omite SOLO el scraper IFOP; deja correr los demás scrapers.",
     )
     parser.add_argument(
+        "--skip-registry-scrape", action="store_true",
+        help="Omite SOLO el scraper inicial del registro nacional (etapa 1); la "
+        "consulta por RPA (etapa 6) sí corre.",
+    )
+    parser.add_argument(
         "--skip-download", action="store_true",
         help="Omite la descarga de grillas Copernicus; reutiliza las existentes en data/copernicus/.",
     )
@@ -83,7 +93,7 @@ def main() -> None:
 
     # --skip-scrape implica saltar cada scraper individual.
     skip_ifop_scrape = args.skip_scrape or args.skip_ifop_scrape
-    skip_registry_scrape = args.skip_scrape
+    skip_registry_initial_scrape = args.skip_scrape or args.skip_registry_scrape
     skip_vms_download = args.skip_scrape
 
     # 1 · IFOP -------------------------------------------------------------
@@ -93,9 +103,17 @@ def main() -> None:
         ifop_pipeline.main()
 
     # 2 · Registro ---------------------------------------------------------
-    _seccion("2/5 · Pipeline de registro (cleaning → filter → ifop_matching → fishing_types → cerco_filter)")
+    _seccion("2/5 · Pipeline de registro (scraper → cleaning → region_filter → filter → ifop_matching → fishing_types → cerco_filter)")
     from processing.registry import run_pipeline as registry_pipeline
-    with _argv(*(["--skip-scrape"] if skip_registry_scrape else [])):
+    # --skip-scrape omite ambos scrapers del registro; --skip-registry-scrape
+    # omite solo el inicial (la consulta por RPA, etapa 6, sí corre).
+    if args.skip_scrape:
+        registry_argv = ["--skip-scrape"]
+    elif skip_registry_initial_scrape:
+        registry_argv = ["--skip-initial-scrape"]
+    else:
+        registry_argv = []
+    with _argv(*registry_argv):
         registry_pipeline.main()
 
     # 3 · Captura ----------------------------------------------------------

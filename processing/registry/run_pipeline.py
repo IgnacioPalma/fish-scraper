@@ -22,6 +22,9 @@ Uso:
     # listado nacional de la etapa 1 y la consulta por RPA de la etapa 6).
     # Reutiliza raw/register.csv y fishing_types/register.csv existentes:
     uv run python -m processing.registry.run_pipeline --skip-scrape
+    # Saltarse SOLO el scraper inicial (etapa 1); la consulta por RPA (etapa 6)
+    # sí corre. Reutiliza raw/register.csv:
+    uv run python -m processing.registry.run_pipeline --skip-initial-scrape
 """
 
 import argparse
@@ -42,11 +45,18 @@ def main() -> None:
         help="No re-scrapear Sernapesca; reutilizar raw/register.csv (etapa 1) y "
         "fishing_types/register.csv (etapa 6) existentes.",
     )
+    parser.add_argument(
+        "--skip-initial-scrape", action="store_true",
+        help="Omite SOLO el scraper inicial del registro nacional (etapa 1); "
+        "reutiliza raw/register.csv. La consulta por RPA (etapa 6) sí corre.",
+    )
     args = parser.parse_args()
 
-    if args.skip_scrape:
-        print("(--skip-scrape: se omiten las etapas 1 y 6; se reutilizan "
-              "raw/register.csv y fishing_types/register.csv existentes)")
+    skip_initial = args.skip_scrape or args.skip_initial_scrape
+    skip_fishing = args.skip_scrape
+
+    if skip_initial:
+        print("(se omite la etapa 1; se reutiliza raw/register.csv existente)")
     else:
         _etapa("1/7 · Scraping del registro nacional (Sernapesca, LANCHA)")
         from processing.registry.scraper import scrape_registry
@@ -68,7 +78,10 @@ def main() -> None:
     from processing.registry.ifop_matching import match_ifop_vessels
     match_ifop_vessels.main()
 
-    if not args.skip_scrape:
+    if skip_fishing:
+        print("(--skip-scrape: se omite la etapa 6; se reutiliza "
+              "fishing_types/register.csv existente)")
+    else:
         _etapa("6/7 · Scraping Sernapesca (señal + arte de JUREL)")
         from processing.registry.fishing_types import scrape_fishing_types
         scrape_fishing_types.main()
