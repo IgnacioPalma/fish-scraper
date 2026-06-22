@@ -84,6 +84,7 @@ def download(
             output_filename=os.path.basename(nc_path),
             username=username,
             password=password,
+            overwrite=True,
         )
     except Exception as exc:
         print(
