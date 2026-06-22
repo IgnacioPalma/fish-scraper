@@ -15,8 +15,8 @@ Transformaciones aplicadas:
     processing/ifop/identifiers/extract_vessels.py y la llave para cruzar con los
     zarpes de referencia IFOP. Ver data/bitacora/ifop_cod_barco_README.md.
   - LATITUD / LONGITUD (formato DDMMSS entero) → grados decimales, luego se
-    asigna el puerto más cercano según
-    processing/capture/cleaning/puertos_atacama.json (columna PUERTO). Las
+    asigna el puerto más cercano según las coordenadas de puerto de la región
+    activa (processing/utils/regions.py → port_coords(); columna PUERTO). Las
     columnas de coordenadas se eliminan del output.
   - FECHA_HORA_RECALADA (formato americano M/D/YYYY HH:MM) → ISO YYYY-MM-DD HH:MM.
   - Nombres de columnas con punto y coma reemplazados por guion bajo,
@@ -28,19 +28,19 @@ Cubre todos los años disponibles (2012-2024); no filtra por rango global del
 proyecto ya que la bitácora se analiza en horizonte histórico propio.
 """
 
-import json
 import math
 import sys
 from pathlib import Path
 
 import pandas as pd
 
+from processing.utils.regions import active_region
+
 
 DATA_DIR = Path(__file__).resolve().parents[3] / "data"
 INPUT_CSV = DATA_DIR / "processing" / "capture" / "input" / "bitacora.csv"
 OUTPUT_DIR = DATA_DIR / "processing" / "capture" / "cleaned"
 OUTPUT_CSV = OUTPUT_DIR / "capture.csv"
-PORTS_JSON = Path(__file__).resolve().parent / "puertos_atacama.json"
 
 REQUIRED_COLS = ["COD_BARCO", "FECHA_HORA_RECALADA", "LATITUD", "LONGITUD", "REGION"]
 
@@ -115,8 +115,7 @@ def main() -> None:
         )
         sys.exit(2)
 
-    with PORTS_JSON.open(encoding="utf-8") as f:
-        ports = json.load(f)
+    ports = active_region().port_coords()
 
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 

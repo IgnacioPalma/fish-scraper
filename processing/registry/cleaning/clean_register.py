@@ -1,7 +1,8 @@
 """
 Limpieza del registro histórico de embarcaciones (paso 1 del pipeline registry).
 
-Lee data/processing/registry/input/register.csv y produce una versión limpia en
+Lee data/processing/registry/raw/register.csv (registro nacional producido por la
+etapa 0 `scraper`) y produce una versión limpia en
 data/processing/registry/cleaned/register.csv. Operaciones:
 
   1. Renombra TODAS las columnas a inglés (Correlativo→id, Nº RPA→RPA,
@@ -28,11 +29,13 @@ import pandas as pd
 
 DATA_DIR = Path(__file__).resolve().parents[3] / "data"
 REGISTRY_DIR = DATA_DIR / "processing" / "registry"
-INPUT_CSV = REGISTRY_DIR / "input" / "register.csv"
+INPUT_CSV = REGISTRY_DIR / "raw" / "register.csv"
 OUTPUT_CSV = REGISTRY_DIR / "cleaned" / "register.csv"
 
 # Columnas originales (separador ';') → nombre en inglés. Solo las que se
 # conservan; el resto se descarta. El orden define el orden de salida.
+# `Region` (código romano, lo agrega el scraper nacional) se conserva para que la
+# etapa region_filter pueda recortar al perfil de región activo.
 RENAME = {
     "Correlativo": "id",
     "Nº RPA": "RPA",
@@ -47,6 +50,7 @@ RENAME = {
     "Potencia": "engine_power",
     "Bodega": "hold_capacity",
     "Caleta": "cove",
+    "Region": "region",
 }
 
 # Columnas a eliminar explícitamente. `Puerto` se usa para deduplicar antes de
@@ -69,8 +73,8 @@ def main() -> None:
     if not INPUT_CSV.exists():
         print(
             f"ERROR: no se encontró {INPUT_CSV}.\n"
-            "       Verifica que el registro histórico esté en\n"
-            "       data/processing/registry/input/register.csv.",
+            "       Generá el registro nacional primero con:\n"
+            "           uv run python -m processing.registry.scraper.scrape_registry",
             file=sys.stderr,
         )
         sys.exit(2)

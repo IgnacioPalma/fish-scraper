@@ -3,7 +3,8 @@ Filtra data/processing/capture/cleaned/capture.csv y escribe
 data/processing/capture/capture.csv con las siguientes restricciones:
 
   - Rango de fechas global del proyecto (utils/date_ranges.py).
-  - Puerto de interés: Caldera (utils/ports.py).
+  - Puerto(s) de interés de la región activa (utils/regions.py → ports_of_interest;
+    por defecto Caldera).
   - Especie de interés: JACK_MACKEREL (utils/species.py).
 
 Solo se retienen registros con captura positiva de la especie de interés.
@@ -15,7 +16,7 @@ from pathlib import Path
 import pandas as pd
 
 from processing.utils.date_ranges import END_DATE, START_DATE
-from processing.utils.ports import PORT_OF_INTEREST
+from processing.utils.regions import active_region
 from processing.utils.species import ALL_SPECIES, SPECIES_OF_INTEREST
 
 
@@ -63,13 +64,14 @@ def main() -> None:
         )
         sys.exit(1)
 
-    # Filtro por puerto de interés.
-    df = df.loc[df["PORT"] == PORT_OF_INTEREST].copy()
+    # Filtro por puerto(s) de interés de la región activa.
+    ports_of_interest = active_region().ports_of_interest
+    df = df.loc[df["PORT"].isin(ports_of_interest)].copy()
     n_tras_puerto = len(df)
 
     if n_tras_puerto == 0:
         print(
-            f"ERROR: ningún registro corresponde al puerto '{PORT_OF_INTEREST}' "
+            f"ERROR: ningún registro corresponde a puerto(s) {list(ports_of_interest)} "
             f"en el rango de fechas seleccionado.",
             file=sys.stderr,
         )
@@ -82,7 +84,7 @@ def main() -> None:
     if n_tras_especie == 0:
         print(
             f"ERROR: ningún registro tiene captura positiva de '{SPECIES_OF_INTEREST}' "
-            f"en {PORT_OF_INTEREST} dentro del rango de fechas seleccionado.",
+            f"en {list(ports_of_interest)} dentro del rango de fechas seleccionado.",
             file=sys.stderr,
         )
         sys.exit(1)
@@ -101,7 +103,7 @@ def main() -> None:
 
     print(
         f"Rango de fechas:               {START_DATE} – {END_DATE}\n"
-        f"Puerto:                        {PORT_OF_INTEREST}\n"
+        f"Puerto(s):                     {', '.join(ports_of_interest)}\n"
         f"Especie:                       {SPECIES_OF_INTEREST}\n"
         f"Filas en entrada:              {total:,}\n"
         f"Tras filtro de fechas:         {n_tras_fecha:,}\n"

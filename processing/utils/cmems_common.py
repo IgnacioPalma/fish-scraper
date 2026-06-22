@@ -48,13 +48,17 @@ import sys
 import numpy as np
 import xarray as xr
 
+from processing.utils.regions import active_region
+
 
 # Paso de la grilla destino: 1/24° ≈ 4 km, coincide con la grilla nativa de CHL L4
 STEP = 1 / 24
 
-# Bounding box de Atacama — fuente única de verdad para todos los descargadores.
-LAT_MIN, LAT_MAX = -29.0, -25.0
-LON_MIN, LON_MAX = -72.0, -70.0
+# Bounding box del área de estudio — derivado del perfil de región activo
+# (processing/utils/regions.py, elegido por la variable de entorno REGION). Se
+# conservan estos cuatro nombres porque todos los descargadores Copernicus y
+# clean_locations los importan desde acá; cambiar de región es cambiar REGION.
+LAT_MIN, LAT_MAX, LON_MIN, LON_MAX = active_region().bbox
 
 TARGET_LAT = np.arange(LAT_MIN, LAT_MAX + STEP / 2, STEP)
 TARGET_LON = np.arange(LON_MIN, LON_MAX + STEP / 2, STEP)

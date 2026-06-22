@@ -3,10 +3,11 @@ Filtra la tabla de zarpes IFOP (`extract_zarpes.py`) a la región de estudio y l
 asigna un identificador propio.
 
 Reglas:
-  - Solo zarpes cuyo puerto de recalada (arrival) está en la Región de Atacama,
-    según `ATACAMA_PORT_NAMES` en `processing/utils/ports.py`. El cruce de
-    nombre → id se hace contra `ports.csv` (comparación normalizada: sin tildes,
-    mayúsculas), así que no hay ids de puerto cableados acá.
+  - Solo zarpes cuyo puerto de recalada (arrival) está en la región activa,
+    según `REGION_PORT_NAMES` en `processing/utils/ports.py` (derivado del perfil
+    de región, `processing/utils/regions.py`). El cruce de nombre → id se hace
+    contra `ports.csv` (comparación normalizada: sin tildes, mayúsculas), así que
+    no hay ids de puerto cableados acá.
   - Se asigna un `zarpe_id` correlativo (1..N) como primera columna.
 
 No se filtra por especie: muchos zarpes de Atacama no traen especie objetivo en
@@ -29,7 +30,7 @@ from pathlib import Path
 
 import pandas as pd
 
-from processing.utils.ports import ATACAMA_PORT_NAMES
+from processing.utils.ports import REGION_PORT_NAMES
 
 
 DATA_DIR    = Path(__file__).resolve().parents[3] / "data"
@@ -45,9 +46,9 @@ def _normalizar(texto: str) -> str:
     return " ".join(sin_tilde.split()).lower()
 
 
-def _ids_atacama(ports: pd.DataFrame) -> set[str]:
-    """Resuelve ATACAMA_PORT_NAMES contra ports.csv → conjunto de port_id."""
-    objetivo = {_normalizar(n) for n in ATACAMA_PORT_NAMES}
+def _ids_region(ports: pd.DataFrame) -> set[str]:
+    """Resuelve REGION_PORT_NAMES contra ports.csv → conjunto de port_id."""
+    objetivo = {_normalizar(n) for n in REGION_PORT_NAMES}
     coincide = ports["port_name"].map(_normalizar).isin(objetivo)
     ids = set(ports.loc[coincide, "port_id"])
 
@@ -56,14 +57,14 @@ def _ids_atacama(ports: pd.DataFrame) -> set[str]:
     encontrados = {_normalizar(n) for n in ports.loc[coincide, "port_name"]}
     faltantes = objetivo - encontrados
     if faltantes:
-        print(f"AVISO: {len(faltantes)} puerto(s) de Atacama no están en "
+        print(f"AVISO: {len(faltantes)} puerto(s) de la región no están en "
               f"ports.csv: {sorted(faltantes)}", file=sys.stderr)
     return ids
 
 
 def filtrar_zarpes(zarpes: pd.DataFrame, ports: pd.DataFrame) -> pd.DataFrame:
-    """Recorta a recaladas en Atacama y agrega el zarpe_id correlativo."""
-    ids = _ids_atacama(ports)
+    """Recorta a recaladas en la región activa y agrega el zarpe_id correlativo."""
+    ids = _ids_region(ports)
     filtrado = zarpes[zarpes["arrival_port_id"].isin(ids)].copy()
     filtrado = filtrado.sort_values(["departure_datetime", "vessel_code"]) \
                        .reset_index(drop=True)

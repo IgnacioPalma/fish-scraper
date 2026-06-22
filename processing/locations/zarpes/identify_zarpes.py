@@ -21,7 +21,7 @@ Definición de zarpe (criterio "ventana de zarpe de referencia"):
 Entrada:
   data/processing/locations/filtered/locations_flota_artesanal_<rango>_registry.csv
   data/output/zarpes_atacama_capture.csv   (zarpes con captura: vessel_code + ventana)
-  processing/capture/cleaning/puertos_atacama.json   (coordenadas de puertos)
+  coordenadas de puerto de la región activa (processing/utils/regions.py)
 
 Salidas:
   data/processing/locations/zarpes/locations_flota_artesanal_<rango>_zarpes.csv
@@ -34,7 +34,6 @@ Uso:
     uv run python -m processing.locations.zarpes.identify_zarpes
 """
 
-import json
 import sys
 from pathlib import Path
 
@@ -43,13 +42,13 @@ import pandas as pd
 
 from processing.utils.date_ranges import END_DATE, START_DATE
 from processing.utils.locations_common import FLEET_NAME
+from processing.utils.regions import active_region
 
 
 DATA_DIR = Path(__file__).resolve().parents[3] / "data" / "processing" / "locations"
 FILTERED_DIR = DATA_DIR / "filtered"
 OUTPUT_DIR = DATA_DIR / "zarpes"
 UNIFIED_ZARPES_CSV = DATA_DIR.parent.parent / "output" / "zarpes_atacama_capture.csv"
-PORTS_JSON = Path(__file__).resolve().parents[2] / "capture" / "cleaning" / "puertos_atacama.json"
 
 EARTH_RADIUS_KM = 6371.0
 
@@ -230,7 +229,7 @@ def main() -> None:
         )
         sys.exit(1)
 
-    ports = json.loads(PORTS_JSON.read_text(encoding="utf-8"))
+    ports = active_region().port_coords()
     df = pd.read_csv(input_csv, dtype=str)
     refs = pd.read_csv(UNIFIED_ZARPES_CSV, dtype=str)
 

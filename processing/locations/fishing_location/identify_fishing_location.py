@@ -30,7 +30,7 @@ ubicación nula, para que aguas abajo se vean todos los zarpes de un lance.
 Entrada:
   data/processing/locations/single_haul/locations_flota_artesanal_<rango>_single_haul.csv
   data/processing/locations/single_haul/zarpes_flota_artesanal_<rango>_single_haul_summary.csv
-  processing/capture/cleaning/puertos_atacama.json   (coordenadas de puertos)
+  coordenadas de puerto de la región activa (processing/utils/regions.py)
 
 Esta es la ÚLTIMA etapa del pipeline de localizaciones; su resumen por zarpe es
 el producto final y se escribe en `data/output/` (junto al producto del pipeline
@@ -47,7 +47,6 @@ Uso:
     uv run python -m processing.locations.fishing_location.identify_fishing_location
 """
 
-import json
 import sys
 from pathlib import Path
 
@@ -56,6 +55,7 @@ import pandas as pd
 
 from processing.utils.date_ranges import END_DATE, START_DATE
 from processing.utils.locations_common import FLEET_NAME
+from processing.utils.regions import active_region
 
 
 DATA_DIR = Path(__file__).resolve().parents[3] / "data" / "processing" / "locations"
@@ -63,7 +63,6 @@ SINGLE_HAUL_DIR = DATA_DIR / "single_haul"
 OUTPUT_DIR = DATA_DIR / "fishing_location"            # intermedio (traza de pings)
 FINAL_OUTPUT_DIR = DATA_DIR.parent.parent / "output"  # producto final (resumen por zarpe)
 UNIFIED_ZARPES_CSV = FINAL_OUTPUT_DIR / "zarpes_atacama_capture.csv"
-PORTS_JSON = Path(__file__).resolve().parents[2] / "capture" / "cleaning" / "puertos_atacama.json"
 
 EARTH_RADIUS_KM = 6371.0
 
@@ -272,7 +271,7 @@ def main() -> None:
         )
         sys.exit(1)
 
-    ports = json.loads(PORTS_JSON.read_text(encoding="utf-8"))
+    ports = active_region().port_coords()
     df = pd.read_csv(input_csv, dtype=str)
     captura = pd.read_csv(UNIFIED_ZARPES_CSV, dtype=str)
 

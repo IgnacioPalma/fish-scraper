@@ -1,7 +1,8 @@
 """
 Filtra data/desembarques.csv a los desembarques que cumplen:
   - ano ∈ [START_DATE.year, END_DATE.year]   (rango global del proyecto)
-  - region == "Atacama"
+  - region ∈ landing_region_names de la región activa (utils/regions.py;
+    por defecto "Atacama")
   - tipo_agente == "Artesanal"
   - especie == "Jurel"
 
@@ -20,14 +21,15 @@ from pathlib import Path
 import pandas as pd
 
 from processing.utils.date_ranges import END_DATE, START_DATE
+from processing.utils.regions import active_region
 
 
 DATA_DIR = Path(__file__).resolve().parent.parent.parent / "data"
 INPUT_CSV = DATA_DIR / "desembarques.csv"
 OUTPUT_DIR = DATA_DIR / "landings"
 
-# Valores del filtro (constantes para que un cambio futuro sea un solo lugar).
-REGION = "Atacama"
+# Región(es) de la región activa (utils/regions.py → landing_region_names).
+REGION_NAMES = active_region().landing_region_names
 TIPO_AGENTE = "Artesanal"
 ESPECIE = "Jurel"
 
@@ -61,7 +63,7 @@ def main() -> None:
     years = list(range(START_DATE.year, END_DATE.year + 1))
     mask = (
         df["ano"].isin(years)
-        & (df["region"] == REGION)
+        & (df["region"].isin(REGION_NAMES))
         & (df["tipo_agente"] == TIPO_AGENTE)
         & (df["especie"] == ESPECIE)
     )
@@ -70,7 +72,7 @@ def main() -> None:
     if filtered.empty:
         print(
             f"ERROR: el filtro no produjo filas para "
-            f"ano∈{years[0]}..{years[-1]}, region='{REGION}', "
+            f"ano∈{years[0]}..{years[-1]}, region∈{list(REGION_NAMES)}, "
             f"tipo_agente='{TIPO_AGENTE}', especie='{ESPECIE}'.\n"
             "       Confirmá los valores exactos en la columna correspondiente.",
             file=sys.stderr,
@@ -78,8 +80,14 @@ def main() -> None:
         sys.exit(1)
 
     year_tag = f"{years[0]}" if len(years) == 1 else f"{years[0]}_{years[-1]}"
+    # Etiqueta de región para el nombre de archivo: un nombre si es una sola región,
+    # si no la región activa (REGION).
+    region_tag = (
+        REGION_NAMES[0].lower().replace(" ", "_") if len(REGION_NAMES) == 1
+        else active_region().key
+    )
     output_csv = OUTPUT_DIR / (
-        f"landings_{ESPECIE.lower()}_{REGION.lower()}_"
+        f"landings_{ESPECIE.lower()}_{region_tag}_"
         f"{TIPO_AGENTE.lower()}_{year_tag}.csv"
     )
 
@@ -92,7 +100,7 @@ def main() -> None:
         f"Filas totales:           {total:,}\n"
         f"Años filtrados:          {years[0]}..{years[-1]} "
         f"({len(years)} año/s)\n"
-        f"Region:                  {REGION}\n"
+        f"Region(es):              {', '.join(REGION_NAMES)}\n"
         f"Tipo agente:             {TIPO_AGENTE}\n"
         f"Especie:                 {ESPECIE}\n"
         f"Filas tras filtro:       {len(filtered):,}\n"
