@@ -11,8 +11,8 @@ código distinto de cero (las etapas ya imprimen una pista en stderr), el
 pipeline se detiene ahí.
 
 La etapa 3 (unificación) requiere que el pipeline IFOP ya haya generado
-`data/processing/ifop/zarpes_atacama.csv` (y `vessels.csv`); si no existen, la
-etapa aborta indicando cómo generarlos.
+`data/processing/ifop/vessels.csv` (para anexar `vessel_name`); si no existe, la
+etapa aborta indicando cómo generarlo.
 
 Entrada:
     data/processing/capture/input/bitacora.csv   (bitácora IFOP cruda)
