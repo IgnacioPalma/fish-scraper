@@ -45,6 +45,7 @@ y `haul_index` del lance) queda como artefacto auditable en
 | `vessel_code` | Texto | "Cód. Barco" decimal interno de IFOP (`id_interno`). |
 | `vessel_name` | Texto | Nombre representativo de la embarcación. |
 | `jack_mackerel_kg` | Decimal | Captura de jurel del viaje, anexada desde `zarpes_atacama_capture.csv`. |
+| `principal_catch` | Booleano | `True` si el jurel fue la especie con mayor captura del viaje (anexado desde `zarpes_atacama_capture.csv`). |
 | `n_hauls` | Entero | Nº de lances CONFIABLES (anillos circulares) detectados en el viaje; 0 si la ubicación es de baja confianza. |
 | `haul_confidence` | Texto | `alta` (lance representativo es un anillo circular), `baja` (solo tramo lento mar adentro, sin anillo) o `sin_pesca` (sin tramo lento mar adentro; sin ubicación). |
 

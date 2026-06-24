@@ -157,6 +157,11 @@ def main() -> None:
     with _argv():
         identify_fishing_location.main()
 
+    _etapa("4.7 · Filtro a zarpes de un único lance confiable (PRODUCTO: haul_single)")
+    from processing.locations.single_haul import filter_single_haul
+    with _argv():
+        filter_single_haul.main()
+
     # 5 · Copernicus (descarga de capas → muestreo en lances) --------------
     _seccion("5/5 · Pipeline Copernicus (descarga de capas → muestreo en lances)")
     from processing.copernicus import run_pipeline as copernicus_pipeline

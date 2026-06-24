@@ -2,8 +2,9 @@
 Anexa a cada lance (haul) las variables oceánicas de Copernicus muestreadas en
 el punto y día del lance, para alimentar el modelo bayesiano de jurel.
 
-Toma la ubicación de lance por zarpe de `data/output/zarpes_atacama_haul_location.csv`
-(una fila por zarpe de un solo lance; ver `processing.locations.fishing_location`)
+Toma la ubicación de lance por zarpe de `data/output/zarpes_atacama_haul_single.csv`
+(el conjunto LIMPIO de modelado: zarpes con un único lance confiable, `haul_confidence
+== "alta"` y `n_hauls == 1`; ver `processing.locations.single_haul.filter_single_haul`)
 y le agrega cinco covariables ambientales, leídas de las grillas ya descargadas
 en `data/copernicus/` (paquete `processing.copernicus`):
 
@@ -40,7 +41,7 @@ Los lances sin coordenadas (`haul_lat`/`haul_lon` nulos) se conservan con las cu
 variables nulas y `env_status == "sin_coords"`.
 
 Entrada:
-  data/output/zarpes_atacama_haul_location.csv
+  data/output/zarpes_atacama_haul_single.csv
   data/copernicus/{sst,chl,phy}_atacama_*.nc   (se globa por producto; tolera el
       archivo de un año y el multi-año a la vez)
 
@@ -63,7 +64,7 @@ import xarray as xr
 
 OUTPUT_DIR = Path(__file__).resolve().parents[2] / "data" / "output"
 COPERNICUS_DIR = Path(__file__).resolve().parents[2] / "data" / "copernicus"
-HAUL_CSV = OUTPUT_DIR / "zarpes_atacama_haul_location.csv"
+HAUL_CSV = OUTPUT_DIR / "zarpes_atacama_haul_single.csv"
 OUTPUT_CSV = OUTPUT_DIR / "zarpes_atacama_haul_env.csv"
 
 EARTH_RADIUS_KM = 6371.0
@@ -154,7 +155,11 @@ def main() -> None:
     sys.stdout.reconfigure(line_buffering=True)
 
     if not HAUL_CSV.exists():
-        sys.exit(f"No se encontró la tabla de lances: {HAUL_CSV}")
+        sys.exit(
+            f"No se encontró la tabla de lances: {HAUL_CSV}\n"
+            "       Generala primero con:\n"
+            "           uv run python -m processing.locations.single_haul.filter_single_haul"
+        )
 
     hauls = pd.read_csv(HAUL_CSV)
     hauls["haul_start"] = pd.to_datetime(hauls["haul_start"], errors="coerce")

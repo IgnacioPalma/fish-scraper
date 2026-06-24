@@ -1,9 +1,10 @@
 # Diccionario de datos — `zarpes_atacama_haul_env.csv`
 
-Producto final del [pipeline Copernicus](../../processing/copernicus/README.md). Una fila por zarpe de un solo
-lance. Hereda todas las columnas de `zarpes_atacama_haul_location.csv` (identificación
-del zarpe, captura y ubicación del lance) y agrega las covariables ambientales
-muestreadas en el punto y día del lance + columnas de auditoría.
+Producto final del [pipeline Copernicus](../../processing/copernicus/README.md) y dataset de
+modelado. Una fila por zarpe de un único lance confiable. Hereda todas las columnas de
+`zarpes_atacama_haul_single.csv` (identificación del zarpe, captura, `principal_catch` y
+ubicación del lance) y agrega las covariables ambientales muestreadas en el punto y día
+del lance + columnas de auditoría.
 
 | Columna | Unidad | Descripción |
 |---|---|---|
