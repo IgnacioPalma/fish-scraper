@@ -3,24 +3,25 @@ Agrupa las posiciones VMS de la flota del registro (`filter_registry.py`) en
 "zarpes" (viajes de pesca), para poder analizar la actividad a nivel de viaje
 en vez de ping a ping.
 
-Definición de zarpe (criterio "ventana de zarpe de referencia"):
-  En vez de inferir el corte de viaje por el silencio de reporte, se usa el
-  dataset unificado de zarpes con captura (`data/output/zarpes_atacama_capture.csv`,
-  producto del pipeline de captura): cada zarpe trae `vessel_code` +
-  `departure_datetime` / `arrival_datetime` (hora real de zarpe y de recalada).
-  Cada ping VMS se asigna al zarpe de su MISMA embarcación (`vessel_code`) cuyo
-  intervalo [zarpe, recalada] contiene la fecha del ping; el `zarpe_id` resultante
-  es el mismo de ese dataset (y de `zarpes_atacama.csv`), de modo que la traza VMS
-  de un viaje queda enlazada a su registro de muestreo y a su captura.
+Definición de zarpe (criterio "ventana hacia la recalada"):
+  La referencia es el dataset de zarpes con captura
+  (`data/output/zarpes_atacama_capture.csv`, espina = bitácora): cada zarpe trae
+  `vessel_code` + `landing_datetime` (hora real de recalada), pero NO la hora de
+  zarpe. El viaje se reconstruye desde la propia traza VMS: cada ping se asigna a
+  la PRÓXIMA recalada de su MISMA embarcación (`vessel_code`), y el viaje queda
+  acotado por la recalada anterior del mismo barco —`(recalada previa, recalada]`—
+  con un tope de `MAX_TRIP_DAYS` para que un barco detenido en puerto durante
+  semanas no absorba pings viejos. El `zarpe_id` resultante es el mismo de ese
+  dataset, de modo que la traza VMS de un viaje queda enlazada a su captura.
 
   Como la referencia son solo los zarpes con captura, los pings que no caen dentro
-  de ninguna ventana (barco en puerto, fuera de temporada, o sin zarpe con captura)
-  se descartan. A cada zarpe se le anota, como contexto, el puerto más cercano a su
-  primer y último ping.
+  de ninguna ventana (barco en puerto fuera de tope, fuera de temporada, o sin
+  zarpe con captura) se descartan. A cada zarpe se le anota, como contexto, el
+  puerto más cercano a su primer y último ping.
 
 Entrada:
   data/processing/locations/filtered/locations_flota_artesanal_<rango>_registry.csv
-  data/output/zarpes_atacama_capture.csv   (zarpes con captura: vessel_code + ventana)
+  data/output/zarpes_atacama_capture.csv   (zarpes con captura: vessel_code + recalada)
   coordenadas de puerto de la región activa (processing/utils/regions.py)
 
 Salidas:
@@ -52,6 +53,12 @@ UNIFIED_ZARPES_CSV = DATA_DIR.parent.parent / "output" / "zarpes_atacama_capture
 
 EARTH_RADIUS_KM = 6371.0
 
+# Tope de duración del viaje (días): un ping se asigna a la próxima recalada de su
+# barco solo si esa recalada cae dentro de esta ventana hacia adelante. Acota el
+# inicio del viaje cuando no hay recalada previa cercana (barco detenido en puerto
+# por largos períodos). Los viajes de cerco de jurel frente a Caldera son cortos.
+MAX_TRIP_DAYS = 5
+
 
 def _rango_tag() -> str:
     """Etiqueta de rango (`2023` o `2023_2024`), idéntica al resto del pipeline."""
@@ -82,26 +89,33 @@ def _dist_a_puertos(lat, lon, ports):
 
 
 def _asignar_zarpe(df: pd.DataFrame, refs: pd.DataFrame) -> pd.DataFrame:
-    """Asigna a cada ping el zarpe_id de referencia cuya ventana lo contiene.
+    """Asigna a cada ping el zarpe_id de la recalada que cierra su viaje.
 
-    Cruce por `vessel_code` + ventana temporal: para cada ping se toma el zarpe
-    de referencia del mismo barco con el `departure_datetime` más reciente <=
-    fecha del ping (merge_asof hacia atrás), y se conserva solo si la fecha del
-    ping es <= `arrival_datetime` de ese zarpe. Los pings que no caen en ninguna
-    ventana quedan con zarpe_id nulo.
+    Cruce por `vessel_code` + ventana temporal hacia adelante: para cada ping se
+    toma la recalada del mismo barco con el `landing_datetime` más próximo >=
+    fecha del ping (merge_asof hacia adelante). El viaje queda acotado por la
+    recalada ANTERIOR del mismo barco —el ping debe ser posterior a ella— y por
+    `MAX_TRIP_DAYS` —la recalada no puede estar a más de ese tope hacia adelante—.
+    Los pings que no caen en ninguna ventana quedan con zarpe_id nulo.
     """
-    refs = refs[["zarpe_id", "vessel_code", "departure_datetime", "arrival_datetime"]].copy()
+    refs = refs[["zarpe_id", "vessel_code", "landing_datetime"]].copy()
     refs["vessel_code"] = refs["vessel_code"].astype(str).str.strip()
-    refs["_dep"] = pd.to_datetime(refs["departure_datetime"], errors="coerce")
-    refs["_arr"] = pd.to_datetime(refs["arrival_datetime"], errors="coerce")
-    refs = refs.dropna(subset=["vessel_code", "_dep", "_arr"]).sort_values("_dep")
+    refs["_arr"] = pd.to_datetime(refs["landing_datetime"], errors="coerce")
+    refs = refs.dropna(subset=["vessel_code", "_arr"]).sort_values("_arr")
+
+    # Recalada previa del mismo barco: cota inferior del viaje (NaT si es la 1ª).
+    refs["_prev_arr"] = refs.groupby("vessel_code")["_arr"].shift()
 
     izq = df.reset_index().sort_values("_dt")  # 'index' preserva el orden original
     matched = pd.merge_asof(
-        izq, refs[["zarpe_id", "vessel_code", "_dep", "_arr"]],
-        left_on="_dt", right_on="_dep", by="vessel_code", direction="backward",
+        izq, refs[["zarpe_id", "vessel_code", "_arr", "_prev_arr"]],
+        left_on="_dt", right_on="_arr", by="vessel_code", direction="forward",
     )
-    dentro = matched["_dt"] <= matched["_arr"]
+    tope = pd.Timedelta(days=MAX_TRIP_DAYS)
+    dentro = (
+        (matched["_arr"] - matched["_dt"] <= tope)
+        & (matched["_prev_arr"].isna() | (matched["_dt"] > matched["_prev_arr"]))
+    )
     matched.loc[~dentro, "zarpe_id"] = pd.NA
 
     out = df.copy()
@@ -241,7 +255,7 @@ def main() -> None:
 
     dur = pd.to_numeric(resumen["duration_h"], errors="coerce")
     print(
-        f"Identificando zarpes (ventana de zarpe de referencia: {UNIFIED_ZARPES_CSV.name})\n"
+        f"Identificando zarpes (ventana hacia la recalada, tope {MAX_TRIP_DAYS}d: {UNIFIED_ZARPES_CSV.name})\n"
         f"  Entrada: {input_csv}\n"
         f"  Puertos (contexto): {', '.join(p['nombre'] for p in ports)}\n\n"
         f"Pings de entrada:                {len(df):,}\n"

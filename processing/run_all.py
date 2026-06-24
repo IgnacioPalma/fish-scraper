@@ -7,12 +7,12 @@ Orden (y por qué):
 
   1. IFOP        → data/processing/ifop/zarpes_atacama.csv + vessels.csv
   2. Registry    → data/processing/registry/register.csv      (usa vessels.csv de IFOP)
-  3. Captura     → data/output/zarpes_atacama_capture.csv     (usa zarpes_atacama + vessels de IFOP)
+  3. Captura     → data/output/zarpes_atacama_capture.csv     (espina = bitácora; usa vessels de IFOP)
   4. Localizaciones (VMS) → data/output/zarpes_atacama_haul_location.csv
                                                               (usa register.csv + zarpes_atacama_capture.csv)
   5. Copernicus  → data/output/zarpes_atacama_haul_env.csv    (muestrea capas en cada lance)  ← PRODUCTO FINAL
 
-El pipeline de localizaciones no tiene orquestador propio: sus siete etapas se
+El pipeline de localizaciones no tiene orquestador propio: sus seis etapas se
 ejecutan aquí en orden. El pipeline de emparejamiento VMS↔bitácora NO entra: su
 producto (`bitacora_caldera_jurel_matched.csv`) no alimenta el dataset de lances.
 
@@ -152,12 +152,7 @@ def main() -> None:
     with _argv():
         identify_zarpes.main()
 
-    _etapa("4.6 · Recorte a zarpes de un solo lance")
-    from processing.locations.single_haul import filter_single_haul
-    with _argv():
-        filter_single_haul.main()
-
-    _etapa("4.7 · Identificación del lugar del lance (PRODUCTO: haul_location)")
+    _etapa("4.6 · Identificación del lugar del lance (PRODUCTO: haul_location)")
     from processing.locations.fishing_location import identify_fishing_location
     with _argv():
         identify_fishing_location.main()

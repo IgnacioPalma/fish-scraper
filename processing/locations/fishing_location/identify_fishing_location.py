@@ -1,6 +1,6 @@
 """
-Identifica, para cada zarpe de un solo lance (`filter_single_haul.py`), el LUGAR
-donde ocurrió la pesca: el punto en que la embarcación de cerco caló la red.
+Identifica, para cada zarpe (`identify_zarpes.py`), el LUGAR donde ocurrió la
+pesca: el punto en que la embarcación de cerco caló la red.
 
 El arte es cerco (purse seine): un lance es una maniobra LENTA y CIRCULAR mar
 adentro (el barco rodea el cardumen). Ese comportamiento se ve en la traza VMS
@@ -25,11 +25,10 @@ Algoritmo:
      elegido; se anota su distancia al puerto más cercano como contexto.
 
 Los zarpes sin ningún bout válido se conservan con haul_status == "sin_pesca" y
-ubicación nula, para que aguas abajo se vean todos los zarpes de un lance.
+ubicación nula, para que aguas abajo se vean todos los zarpes.
 
 Entrada:
-  data/processing/locations/single_haul/locations_flota_artesanal_<rango>_single_haul.csv
-  data/processing/locations/single_haul/zarpes_flota_artesanal_<rango>_single_haul_summary.csv
+  data/processing/locations/zarpes/locations_flota_artesanal_<rango>_zarpes.csv
   coordenadas de puerto de la región activa (processing/utils/regions.py)
 
 Esta es la ÚLTIMA etapa del pipeline de localizaciones; su resumen por zarpe es
@@ -59,7 +58,7 @@ from processing.utils.regions import active_region
 
 
 DATA_DIR = Path(__file__).resolve().parents[3] / "data" / "processing" / "locations"
-SINGLE_HAUL_DIR = DATA_DIR / "single_haul"
+ZARPES_DIR = DATA_DIR / "zarpes"
 OUTPUT_DIR = DATA_DIR / "fishing_location"            # intermedio (traza de pings)
 FINAL_OUTPUT_DIR = DATA_DIR.parent.parent / "output"  # producto final (resumen por zarpe)
 UNIFIED_ZARPES_CSV = FINAL_OUTPUT_DIR / "zarpes_atacama_capture.csv"
@@ -249,15 +248,15 @@ def main() -> None:
     sys.stderr.reconfigure(line_buffering=True)
 
     tag = _rango_tag()
-    input_csv = SINGLE_HAUL_DIR / f"locations_{FLEET_NAME}_{tag}_single_haul.csv"
+    input_csv = ZARPES_DIR / f"locations_{FLEET_NAME}_{tag}_zarpes.csv"
     pings_csv = OUTPUT_DIR / f"locations_{FLEET_NAME}_{tag}_fishing.csv"
     summary_csv = FINAL_OUTPUT_DIR / "zarpes_atacama_haul_location.csv"
 
     if not input_csv.exists():
         print(
             f"ERROR: no existe {input_csv}.\n"
-            "       Generá los zarpes de un solo lance primero con:\n"
-            "           uv run python -m processing.locations.single_haul.filter_single_haul",
+            "       Generá los zarpes (asignación de pings) primero con:\n"
+            "           uv run python -m processing.locations.zarpes.identify_zarpes",
             file=sys.stderr,
         )
         sys.exit(1)

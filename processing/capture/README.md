@@ -1,15 +1,16 @@
 # Pipeline de captura (vessel capture)
 
 Normaliza la bitácora IFOP cruda (registros de captura por recalada), la reduce a
-las recaladas de jurel en Caldera dentro del rango de fechas del proyecto, y la
-une con los zarpes de referencia de IFOP para dejar un dataset final por zarpe
-enriquecido con su captura. Es el sucesor del antiguo pipeline `processing/bitacora`
-(etapas de limpieza y filtrado); el emparejamiento VMS y el cruce de
-nombres↔COD_BARCO siguen viviendo en `processing/bitacora` y consumen las salidas
-de aquí.
+las recaladas de jurel en Caldera dentro del rango de fechas del proyecto, y deja
+un dataset final por zarpe (= recalada) enriquecido con el nombre de la
+embarcación. La bitácora es la **espina** del dataset: registra TODAS las
+recaladas, no solo las observadas por IFOP. Es el sucesor del antiguo pipeline
+`processing/bitacora` (etapas de limpieza y filtrado); el emparejamiento VMS y el
+cruce de nombres↔COD_BARCO siguen viviendo en `processing/bitacora` y consumen las
+salidas de aquí.
 
-> La etapa 3 (unificación) depende del pipeline IFOP: necesita
-> `data/processing/ifop/zarpes_atacama.csv` y `vessels.csv`. Generalos antes con
+> La etapa 3 (unificación) solo necesita `data/processing/ifop/vessels.csv` del
+> pipeline IFOP (para anexar `vessel_name`). Generalo antes con
 > `uv run python -m processing.ifop.run_pipeline`.
 
 ## Ejecutar el pipeline completo
@@ -40,7 +41,7 @@ data/processing/capture/input/bitacora.csv
 |---|---|---|---|
 | 1 | `cleaning.clean_capture` | `input/bitacora.csv` | `data/processing/capture/cleaned/capture.csv` |
 | 2 | `filter.filter_capture` | `cleaned/capture.csv` | `data/processing/capture/capture.csv` |
-| 3 | `unify.unify_zarpes` | `capture.csv` + `zarpes_atacama.csv` + `vessels.csv` | `data/output/zarpes_atacama_capture.csv` |
+| 3 | `unify.unify_zarpes` | `capture.csv` + `vessels.csv` | `data/output/zarpes_atacama_capture.csv` |
 
 ### 1. Limpieza — `processing/capture/cleaning/`
 
@@ -66,18 +67,18 @@ especie más capturada del viaje) y elimina las columnas de las demás especies.
 
 ### 3. Unificación — `processing/capture/unify/`
 
-`unify_zarpes.py` une los zarpes de referencia de IFOP
-(`data/processing/ifop/zarpes_atacama.csv`, una fila por viaje observado) con la
-captura filtrada (`capture.csv`), dejando un dataset por zarpe enriquecido con su
-captura de jurel. El puente es la identidad `COD_BARCO = HEX(vessel_code + 5)`:
-como la etapa de limpieza ya dejó `vessel_code` en la captura, el cruce es por
-`vessel_code` + la marca de tiempo de recalada (`arrival_datetime` ↔
-`landing_datetime`) a resolución de minuto. Es un **INNER JOIN**: solo quedan los
-zarpes con captura (~70 de 562; el resto de los zarpes queda fuera porque la
-captura está acotada a Caldera + jurel + rango de fechas del estudio). El cruce es
-exacto cuando existe, así que ampliar la tolerancia (`TOL_MIN`) no agrega
-coincidencias. Anexa `vessel_name` desde `vessels.csv`. Salida:
-`data/output/zarpes_atacama_capture.csv` (producto final del proyecto).
+`unify_zarpes.py` toma la captura filtrada (`capture.csv`) como **espina** —cada
+recalada de jurel es un zarpe— y le asigna un `zarpe_id` correlativo (1..N).
+Anexa `vessel_name` desde `vessels.csv` con un **LEFT JOIN** por `vessel_code`
+(las recaladas de barcos ausentes del SIEM quedan con `vessel_name` nulo, no se
+descartan). El puente embarcación es la identidad `COD_BARCO = HEX(vessel_code + 5)`
+(la limpieza ya dejó `vessel_code` en la captura). No se incluyen ni la hora de
+zarpe ni el nº de lances: la ventana del viaje se reconstruye desde la traza VMS
+aguas abajo (`identify_zarpes.py`) y ya no se filtra por nº de lances. Salida:
+`data/output/zarpes_atacama_capture.csv` (producto del pipeline; espina del
+dataset de modelado). Usar la bitácora como espina —en vez de los ~80 viajes
+observados de IFOP que coincidían al minuto— lleva los zarpes con captura a
+~2.400.
 
 ## Consumidores aguas abajo
 
