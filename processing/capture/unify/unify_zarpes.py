@@ -27,7 +27,7 @@ Entradas:
   data/processing/ifop/vessels.csv           (para anexar vessel_name)
 
 Salida:
-  data/output/zarpes_atacama_capture.csv
+  data/processing/capture/zarpes_atacama_capture.csv
 
 Uso:
     uv run python -m processing.capture.unify.unify_zarpes
@@ -42,7 +42,7 @@ import pandas as pd
 DATA_DIR    = Path(__file__).resolve().parents[3] / "data"
 CAPTURE_CSV = DATA_DIR / "processing" / "capture" / "capture.csv"
 VESSELS_CSV = DATA_DIR / "processing" / "ifop" / "vessels.csv"
-OUTPUT_DIR  = DATA_DIR / "output"
+OUTPUT_DIR  = DATA_DIR / "processing" / "capture"
 OUTPUT_CSV  = OUTPUT_DIR / "zarpes_atacama_capture.csv"
 
 # Columnas de salida (orden final del dataset de zarpes con captura).

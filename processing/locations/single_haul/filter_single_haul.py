@@ -14,10 +14,10 @@ IFOP; ahora el nº de lances se deriva de la propia traza VMS (geometría circul
 en `identify_fishing_location.py`), no de la bitácora.
 
 Entrada:
-  data/output/zarpes_atacama_haul_location.csv
+  data/processing/locations/fishing_location/zarpes_atacama_haul_location.csv
 
 Salida:
-  data/output/zarpes_atacama_haul_single.csv
+  data/processing/locations/single_haul/zarpes_atacama_haul_single.csv
       → (PRODUCTO) misma estructura que la entrada, solo los zarpes de un único
         lance confiable (modeling-ready).
 
@@ -31,8 +31,9 @@ from pathlib import Path
 import pandas as pd
 
 
-OUTPUT_DIR = Path(__file__).resolve().parents[3] / "data" / "output"
-HAUL_CSV = OUTPUT_DIR / "zarpes_atacama_haul_location.csv"
+LOCATIONS_DIR = Path(__file__).resolve().parents[3] / "data" / "processing" / "locations"
+OUTPUT_DIR = LOCATIONS_DIR / "single_haul"
+HAUL_CSV = LOCATIONS_DIR / "fishing_location" / "zarpes_atacama_haul_location.csv"
 SINGLE_CSV = OUTPUT_DIR / "zarpes_atacama_haul_single.csv"
 
 # Condiciones del conjunto limpio.

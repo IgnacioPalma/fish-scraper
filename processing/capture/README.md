@@ -24,7 +24,7 @@ Cada etapa también se puede correr por separado (en orden):
 ```bash
 uv run python -m processing.capture.cleaning.clean_capture   # → cleaned/capture.csv
 uv run python -m processing.capture.filter.filter_capture    # → capture.csv
-uv run python -m processing.capture.unify.unify_zarpes        # → data/output/zarpes_atacama_capture.csv
+uv run python -m processing.capture.unify.unify_zarpes        # → data/processing/capture/zarpes_atacama_capture.csv
 ```
 
 ## Entrada
@@ -41,7 +41,7 @@ data/processing/capture/input/bitacora.csv
 |---|---|---|---|
 | 1 | `cleaning.clean_capture` | `input/bitacora.csv` | `data/processing/capture/cleaned/capture.csv` |
 | 2 | `filter.filter_capture` | `cleaned/capture.csv` | `data/processing/capture/capture.csv` |
-| 3 | `unify.unify_zarpes` | `capture.csv` + `vessels.csv` | `data/output/zarpes_atacama_capture.csv` |
+| 3 | `unify.unify_zarpes` | `capture.csv` + `vessels.csv` | `data/processing/capture/zarpes_atacama_capture.csv` |
 
 ### 1. Limpieza — `processing/capture/cleaning/`
 
@@ -75,7 +75,7 @@ descartan). El puente embarcación es la identidad `COD_BARCO = HEX(vessel_code 
 (la limpieza ya dejó `vessel_code` en la captura). No se incluyen ni la hora de
 zarpe ni el nº de lances: la ventana del viaje se reconstruye desde la traza VMS
 aguas abajo (`identify_zarpes.py`) y ya no se filtra por nº de lances. Salida:
-`data/output/zarpes_atacama_capture.csv` (producto del pipeline; espina del
+`data/processing/capture/zarpes_atacama_capture.csv` (producto del pipeline; espina del
 dataset de modelado). Usar la bitácora como espina —en vez de los ~80 viajes
 observados de IFOP que coincidían al minuto— lleva los zarpes con captura a
 ~2.400.

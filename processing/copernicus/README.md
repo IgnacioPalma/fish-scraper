@@ -11,7 +11,7 @@ rango global del proyecto ([../utils/date_ranges.py](../utils/date_ranges.py),
 2023-01-01 a 2024-12-31), intersectado con la disponibilidad de cada producto.
 
 > La etapa de muestreo depende del pipeline de localizaciones: necesita
-> `data/output/zarpes_atacama_haul_single.csv` (zarpes de un único lance confiable).
+> `data/processing/locations/single_haul/zarpes_atacama_haul_single.csv` (zarpes de un único lance confiable).
 > Genéralo antes con las etapas de `processing.locations` (hasta `single_haul.filter_single_haul`).
 
 ## Ejecutar el pipeline completo
@@ -60,7 +60,7 @@ ver la sección *"Solución de problemas"* y actualizar la constante al inicio d
 
 ### 5. Muestreo en lances — `sample_haul_environment.py`
 
-Para cada lance de [zarpes_atacama_haul_single.csv](../../data/output/zarpes_atacama_haul_single.csv)
+Para cada lance de [zarpes_atacama_haul_single.csv](../../data/processing/locations/single_haul/zarpes_atacama_haul_single.csv)
 toma el **día de grilla más cercano** (`sel(time, method="nearest")`) y la **celda más
 cercana** de cada capa. Si la celda más cercana es NaN (máscara de tierra), busca la
 **celda de mar válida más cercana** dentro de `MAX_FALLBACK_KM` (25 km) y registra la

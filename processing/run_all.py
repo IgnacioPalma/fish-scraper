@@ -7,8 +7,8 @@ Orden (y por qué):
 
   1. IFOP        → data/processing/ifop/zarpes_atacama.csv + vessels.csv
   2. Registry    → data/processing/registry/register.csv      (usa vessels.csv de IFOP)
-  3. Captura     → data/output/zarpes_atacama_capture.csv     (espina = bitácora; usa vessels de IFOP)
-  4. Localizaciones (VMS) → data/output/zarpes_atacama_haul_location.csv
+  3. Captura     → data/processing/capture/zarpes_atacama_capture.csv     (espina = bitácora; usa vessels de IFOP)
+  4. Localizaciones (VMS) → data/processing/locations/fishing_location/zarpes_atacama_haul_location.csv
                                                               (usa register.csv + zarpes_atacama_capture.csv)
   5. Copernicus  → data/output/zarpes_atacama_haul_env.csv    (muestrea capas en cada lance)  ← PRODUCTO FINAL
 

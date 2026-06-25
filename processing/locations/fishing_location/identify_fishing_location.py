@@ -39,16 +39,16 @@ Entrada:
   data/processing/locations/zarpes/locations_flota_artesanal_<rango>_zarpes.csv
   coordenadas de puerto de la región activa (processing/utils/regions.py)
 
-Esta es la ÚLTIMA etapa del pipeline de localizaciones; su resumen por zarpe es
-el producto final y se escribe en `data/output/` (junto al producto del pipeline
-de captura). La traza de pings etiquetada queda como artefacto auditable en la
-carpeta de la etapa.
+Esta es la penúltima etapa del pipeline de localizaciones; su resumen por zarpe y
+la traza de pings etiquetada quedan en la carpeta de la etapa
+(`data/processing/locations/fishing_location/`). La etapa `single_haul` recorta
+ese resumen al conjunto de modelado.
 
 Salidas:
   data/processing/locations/fishing_location/locations_flota_artesanal_<rango>_fishing.csv
       → (intermedio auditable) los pings + turn_deg, behavior (transito/candidato/pesca), is_haul
-  data/output/zarpes_atacama_haul_location.csv
-      → (PRODUCTO FINAL) una fila por zarpe con la ubicación del lance (haul_lat/haul_lon, ventana, etc.)
+  data/processing/locations/fishing_location/zarpes_atacama_haul_location.csv
+      → (PRODUCTO) una fila por zarpe con la ubicación del lance (haul_lat/haul_lon, ventana, etc.)
 
 Uso:
     uv run python -m processing.locations.fishing_location.identify_fishing_location
@@ -67,9 +67,8 @@ from processing.utils.regions import active_region
 
 DATA_DIR = Path(__file__).resolve().parents[3] / "data" / "processing" / "locations"
 ZARPES_DIR = DATA_DIR / "zarpes"
-OUTPUT_DIR = DATA_DIR / "fishing_location"            # intermedio (traza de pings)
-FINAL_OUTPUT_DIR = DATA_DIR.parent.parent / "output"  # producto final (resumen por zarpe)
-UNIFIED_ZARPES_CSV = FINAL_OUTPUT_DIR / "zarpes_atacama_capture.csv"
+OUTPUT_DIR = DATA_DIR / "fishing_location"            # traza de pings + resumen por zarpe
+UNIFIED_ZARPES_CSV = DATA_DIR.parent / "capture" / "zarpes_atacama_capture.csv"
 
 EARTH_RADIUS_KM = 6371.0
 
@@ -356,7 +355,7 @@ def main() -> None:
     tag = _rango_tag()
     input_csv = ZARPES_DIR / f"locations_{FLEET_NAME}_{tag}_zarpes.csv"
     pings_csv = OUTPUT_DIR / f"locations_{FLEET_NAME}_{tag}_fishing.csv"
-    summary_csv = FINAL_OUTPUT_DIR / "zarpes_atacama_haul_location.csv"
+    summary_csv = OUTPUT_DIR / "zarpes_atacama_haul_location.csv"
 
     if not input_csv.exists():
         print(
@@ -383,7 +382,6 @@ def main() -> None:
     pings, resumen, stats = identificar_pesca(df, ports, captura)
 
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-    FINAL_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     pings.to_csv(pings_csv, index=False)
     resumen.to_csv(summary_csv, index=False)
 

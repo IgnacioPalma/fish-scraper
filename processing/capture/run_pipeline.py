@@ -4,7 +4,7 @@ punta, ejecutando cada etapa en orden:
 
   1. cleaning  → data/processing/capture/cleaned/capture.csv
   2. filter    → data/processing/capture/capture.csv
-  3. unify     → data/output/zarpes_atacama_capture.csv
+  3. unify     → data/processing/capture/zarpes_atacama_capture.csv
 
 Cada etapa es el `main()` del módulo correspondiente; si una falla aborta con
 código distinto de cero (las etapas ya imprimen una pista en stderr), el

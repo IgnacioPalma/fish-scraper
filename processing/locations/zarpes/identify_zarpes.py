@@ -5,7 +5,7 @@ en vez de ping a ping.
 
 Definición de zarpe (criterio "ventana hacia la recalada"):
   La referencia es el dataset de zarpes con captura
-  (`data/output/zarpes_atacama_capture.csv`, espina = bitácora): cada zarpe trae
+  (`data/processing/capture/zarpes_atacama_capture.csv`, espina = bitácora): cada zarpe trae
   `vessel_code` + `landing_datetime` (hora real de recalada), pero NO la hora de
   zarpe. El viaje se reconstruye desde la propia traza VMS: cada ping se asigna a
   la PRÓXIMA recalada de su MISMA embarcación (`vessel_code`), y el viaje queda
@@ -21,7 +21,7 @@ Definición de zarpe (criterio "ventana hacia la recalada"):
 
 Entrada:
   data/processing/locations/filtered/locations_flota_artesanal_<rango>_registry.csv
-  data/output/zarpes_atacama_capture.csv   (zarpes con captura: vessel_code + recalada)
+  data/processing/capture/zarpes_atacama_capture.csv   (zarpes con captura: vessel_code + recalada)
   coordenadas de puerto de la región activa (processing/utils/regions.py)
 
 Salidas:
@@ -49,7 +49,7 @@ from processing.utils.regions import active_region
 DATA_DIR = Path(__file__).resolve().parents[3] / "data" / "processing" / "locations"
 FILTERED_DIR = DATA_DIR / "filtered"
 OUTPUT_DIR = DATA_DIR / "zarpes"
-UNIFIED_ZARPES_CSV = DATA_DIR.parent.parent / "output" / "zarpes_atacama_capture.csv"
+UNIFIED_ZARPES_CSV = DATA_DIR.parent / "capture" / "zarpes_atacama_capture.csv"
 
 EARTH_RADIUS_KM = 6371.0
 

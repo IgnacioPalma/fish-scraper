@@ -14,7 +14,8 @@ código distinto de cero (las etapas ya imprimen una pista en stderr), el pipeli
 se detiene ahí.
 
 La etapa 5 (muestreo) requiere que el pipeline de localizaciones ya haya generado
-`data/output/zarpes_atacama_haul_location.csv` (la ubicación de lance por zarpe).
+`data/processing/locations/single_haul/zarpes_atacama_haul_single.csv` (zarpes de
+un único lance confiable).
 
 Las descargas necesitan credenciales Copernicus en `.env` (COPERNICUS_USERNAME /
 COPERNICUS_PASSWORD) y conexión a internet; son lentas. Con `--skip-download` se

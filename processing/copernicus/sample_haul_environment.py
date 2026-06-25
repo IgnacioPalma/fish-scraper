@@ -2,7 +2,7 @@
 Anexa a cada lance (haul) las variables oceánicas de Copernicus muestreadas en
 el punto y día del lance, para alimentar el modelo bayesiano de jurel.
 
-Toma la ubicación de lance por zarpe de `data/output/zarpes_atacama_haul_single.csv`
+Toma la ubicación de lance por zarpe de `data/processing/locations/single_haul/zarpes_atacama_haul_single.csv`
 (el conjunto LIMPIO de modelado: zarpes con un único lance confiable, `haul_confidence
 == "alta"` y `n_hauls == 1`; ver `processing.locations.single_haul.filter_single_haul`)
 y le agrega cinco covariables ambientales, leídas de las grillas ya descargadas
@@ -41,7 +41,7 @@ Los lances sin coordenadas (`haul_lat`/`haul_lon` nulos) se conservan con las cu
 variables nulas y `env_status == "sin_coords"`.
 
 Entrada:
-  data/output/zarpes_atacama_haul_single.csv
+  data/processing/locations/single_haul/zarpes_atacama_haul_single.csv
   data/copernicus/{sst,chl,phy}_atacama_*.nc   (se globa por producto; tolera el
       archivo de un año y el multi-año a la vez)
 
@@ -64,7 +64,10 @@ import xarray as xr
 
 OUTPUT_DIR = Path(__file__).resolve().parents[2] / "data" / "output"
 COPERNICUS_DIR = Path(__file__).resolve().parents[2] / "data" / "copernicus"
-HAUL_CSV = OUTPUT_DIR / "zarpes_atacama_haul_single.csv"
+HAUL_CSV = (
+    Path(__file__).resolve().parents[2]
+    / "data" / "processing" / "locations" / "single_haul" / "zarpes_atacama_haul_single.csv"
+)
 OUTPUT_CSV = OUTPUT_DIR / "zarpes_atacama_haul_env.csv"
 
 EARTH_RADIUS_KM = 6371.0
