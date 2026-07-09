@@ -69,6 +69,41 @@ covariables son superficiales o integradas en la vertical para no sufrir el enma
 costero por profundidad (por eso se descartó la temperatura subsuperficial `thetao`,
 cuyo nivel profundo no existe sobre la plataforma costera).
 
+## Pipeline de pronóstico (forecast → grilla de predicción)
+
+Mientras el pipeline de arriba produce las covariables **históricas** (reanálisis `_my_`)
+para **entrenar**, este pipeline paralelo produce las mismas cinco covariables a **futuro**
+para **predecir**: descarga las capas de **análisis-y-pronóstico** (`anfc`) y arma una
+grilla con todas las celdas de mar de Atacama × cada día de pronóstico, lista para correr
+el modelo entrenado sobre toda la costa (mapa de pronóstico), no sólo en los lances.
+
+> **Horizonte:** el sistema operacional global Copernicus entrega un pronóstico **rodante de
+> ~10 días** (se refresca a diario). La ventana temporal es **dinámica**: hoy a hoy + 10 días
+> (constante `FORECAST_DAYS`), por eso este pipeline NO usa el rango histórico de
+> [date_ranges.py](../utils/date_ranges.py) ni entra en `run_all.py`.
+
+> **Caveat `sst_c`:** el modelo se entrenó con SST observada OSTIA L4 (`analysed_sst`); para
+> días futuros no hay observación, así que el pronóstico usa la temperatura superficial del
+> modelo físico (`thetao` @ 0 m). Misma unidad (°C), fuente distinta. Se mantiene el nombre
+> de columna `sst_c` para que las entradas del modelo calcen.
+
+```bash
+uv run python -m processing.copernicus.run_forecast_pipeline
+# Reutiliza las grillas de pronóstico ya descargadas y arranca desde el armado:
+uv run python -m processing.copernicus.run_forecast_pipeline --skip-download
+```
+
+| # | Módulo | Salida | Variable(s) | Producto `anfc` |
+|---|---|---|---|---|
+| 1 | `download_phy_forecast` | `data/copernicus/phy_forecast_atacama_<rango>.{nc,csv}` | `sst_c` (`thetao`@0 m), `mld_m` (`mlotst`), `sss_psu` (`so`@0 m) | `GLOBAL_ANALYSISFORECAST_PHY_001_024` |
+| 2 | `download_bgc_forecast` | `data/copernicus/bgc_forecast_atacama_<rango>.{nc,csv}` | `chl_mg_m3` (`chl`@0 m), `o2_min_mmol_m3` (`o2` mín. 0–200 m) | `GLOBAL_ANALYSISFORECAST_BGC_001_028` |
+| 3 | `build_forecast_grid` | `data/output/copernicus/copernicus_forecast_grid_<rango>.csv` | (producto final, sólo celdas de mar) | — |
+
+El armado (`build_forecast_grid`) no descarga nada: une las dos grillas de pronóstico por
+`["time", "latitude", "longitude"]` (comparten la grilla destino común byte a byte) y
+descarta tierra (conserva sólo celdas con las cinco covariables). Diccionario en
+[data/output/copernicus/diccionario_copernicus_forecast_grid.md](../../data/output/copernicus/diccionario_copernicus_forecast_grid.md).
+
 ## Diccionario de datos
 
 El detalle por columna del producto final `data/output/zarpes_atacama_haul_env.csv`
