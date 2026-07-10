@@ -12,5 +12,5 @@ correr el pipeline (`uv run python -m processing.run_all`).
 
 from datetime import date
 
-START_DATE = date(2022, 2, 6)
+START_DATE = date(2019, 3, 3)
 END_DATE = date(2024, 12, 31)
