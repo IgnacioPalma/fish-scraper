@@ -13,6 +13,10 @@ Este proyecto descarga datos diarios del servicio Copernicus Marine para la fran
 
 Todas las capas terminan sobre la misma grilla 1/24° (≈4 km), de modo que un cruce SST↔CHL↔PHY↔BGC↔SLA↔WIND es un `pd.merge(..., on=["time", "latitude", "longitude"])` directo, sin regrillado posterior. También provee un servidor Jupyter para análisis posterior. El entorno Python se gestiona con [uv](https://docs.astral.sh/uv/) y su lockfile (`uv.lock`), de forma que las dependencias quedan fijadas de forma reproducible.
 
+## Ejecución en la nube
+
+El pipeline histórico también corre en GitHub Actions, dejando el corpus crudo y los productos finales en Cloudflare R2 (nada necesita correr en una máquina local). Ver [docs/cloud.md](docs/cloud.md).
+
 ## Requisitos previos
 
 - [uv](https://docs.astral.sh/uv/getting-started/installation/) instalado. uv descarga e instala automáticamente Python 3.11 (ver `.python-version`) si no lo tienes.

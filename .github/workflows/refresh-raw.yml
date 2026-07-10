@@ -1,0 +1,99 @@
+name: refresh-raw
+
+# Corre los scrapers/descargadores en la nube y cachea el corpus crudo en R2.
+# Se dispara a mano; el corpus histórico es estático, así que se corre rara vez.
+# Cada job baja su porción de raw/ desde R2 antes de scrapear (skip-if-exists) y
+# vuelve a subirla al terminar; los jobs escriben claves R2 disjuntas.
+on:
+  workflow_dispatch:
+
+# Evita dos refrescos simultáneos pisándose sobre R2.
+concurrency:
+  group: refresh-raw
+  cancel-in-progress: false
+
+env:
+  R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+  R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+  R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+  R2_BUCKET: ${{ secrets.R2_BUCKET }}
+
+jobs:
+  ifop:
+    runs-on: ubuntu-latest
+    timeout-minutes: 350  # bajo el tope de 6 h; el scraper reanuda por checkpoint
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+      - run: uv sync
+      - run: uv run playwright install --with-deps chromium
+      - name: Traer IFOP crudo existente (reanuda checkpoint)
+        run: scripts/r2_pull.sh ifop
+      - name: Scrapear SIEM IFOP
+        run: uv run python -m processing.ifop.scraper.scrape_siem
+      - name: Subir IFOP crudo a R2
+        if: always()  # sube el checkpoint parcial aunque el job se corte
+        run: scripts/r2_push.sh ifop
+
+  vms:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+      - run: uv sync
+      - name: Traer VMS diarios existentes (skip-if-exists por día)
+        run: scripts/r2_pull.sh vms
+      - name: Descargar reportes VMS diarios (Sernapesca)
+        run: uv run python -m processing.locations.scraper.download_locations
+      - name: Subir VMS crudo a R2
+        if: always()
+        run: scripts/r2_push.sh vms
+
+  copernicus:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        layer: [sst, chl, phy, bgc]
+    env:
+      COPERNICUS_USERNAME: ${{ secrets.COPERNICUS_USERNAME }}
+      COPERNICUS_PASSWORD: ${{ secrets.COPERNICUS_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+      - run: uv sync
+      - name: Traer grillas Copernicus existentes (skip-if-exists)
+        run: scripts/r2_pull.sh copernicus
+      - name: Descargar capa ${{ matrix.layer }}
+        run: uv run python -m processing.copernicus.download_${{ matrix.layer }}
+      - name: Subir grillas Copernicus a R2
+        if: always()
+        run: scripts/r2_push.sh copernicus
+
+  registry:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    needs: ifop  # el scrape por RPA (fishing_types) necesita vessels.csv de IFOP
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+      - run: uv sync
+      - name: Traer IFOP crudo + registro existente
+        run: scripts/r2_pull.sh ifop registry
+      - name: Derivar vessels.csv de IFOP (sin re-scrapear)
+        run: uv run python -m processing.ifop.run_pipeline --skip-scrape
+      - name: Scrapear registro nacional + artes (fishing_types)
+        run: uv run python -m processing.registry.run_pipeline
+      - name: Subir registro crudo a R2
+        if: always()
+        run: scripts/r2_push.sh registry

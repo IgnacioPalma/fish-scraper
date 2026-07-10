@@ -42,7 +42,6 @@ from processing.utils.cmems_common import (
 from processing.utils.date_ranges import END_DATE as GLOBAL_END
 from processing.utils.date_ranges import START_DATE as GLOBAL_START
 
-
 # Producto: GLOBAL_MULTIYEAR_PHY_001_030 (Mercator GLORYS12 reanalysis,
 # diario, 1/12°). copernicusmarine.subset() requiere el ID de DATASET, no
 # el de producto. Si Copernicus lo renombra, ver el README (sección
@@ -185,7 +184,7 @@ def regrid_and_export(nc_path: str, csv_path: str) -> str:
     return csv_path
 
 
-def main() -> None:
+def main(force: bool = False) -> None:
     effective_start = max(GLOBAL_START, PRODUCT_START_DATE)
     effective_end = min(GLOBAL_END, PRODUCT_END_DATE)
 
@@ -207,6 +206,13 @@ def main() -> None:
     nc_path = os.path.join(OUTPUT_DIR, f"{FILENAME_BASE}_{year_tag}.nc")
     csv_path = os.path.join(OUTPUT_DIR, f"{FILENAME_BASE}_{year_tag}.csv")
 
+    # Skip-if-exists: si el .nc y el .csv ya están (p. ej. traídos de R2), no
+    # se vuelve a descargar. Con --force se ignoran y se rebajan.
+    if not force and os.path.exists(nc_path) and os.path.exists(csv_path):
+        print(f"(ya existen; se omite la descarga)\n  {nc_path}\n  {csv_path}")
+        print("  Usá --force para volver a descargar.")
+        return
+
     username, password = read_credentials()
     download(username, password, effective_start, effective_end, nc_path)
     regrid_and_export(nc_path, csv_path)
@@ -214,4 +220,12 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    import argparse
+
+    _parser = argparse.ArgumentParser(description=__doc__)
+    _parser.add_argument(
+        "--force",
+        action="store_true",
+        help="Vuelve a descargar aunque el .nc/.csv ya existan.",
+    )
+    main(force=_parser.parse_args().force)
