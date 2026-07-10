@@ -6,12 +6,11 @@ Sernapesca, etc.) lo intersecta con su propia disponibilidad antes de
 descargar, y los productos que no tienen datos dentro de la ventana terminan
 sin error imprimiendo una nota.
 
-Para mover o recortar el rango: editá las dos constantes acá abajo y
-reconstruí la imagen Docker (`docker compose run --rm --build <servicio>`).
+Para mover o recortar el rango: editá las dos constantes acá abajo y volvé a
+correr el pipeline (`uv run python -m processing.run_all`).
 """
 
 from datetime import date
-
 
 START_DATE = date(2022, 2, 6)
 END_DATE = date(2024, 12, 31)

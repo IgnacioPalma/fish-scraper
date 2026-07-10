@@ -45,7 +45,6 @@ Uso:
 import html as htmllib
 import os
 import re
-import sys
 from concurrent.futures import ThreadPoolExecutor
 from difflib import SequenceMatcher
 from pathlib import Path
@@ -57,11 +56,17 @@ from playwright.sync_api import sync_playwright
 
 from processing.ifop.scraper.fetch_personnel import normalizar, obtener_observadores
 
-
 DATA_DIR   = Path(__file__).resolve().parents[3] / "data"
 OUT_DIR    = DATA_DIR / "processing" / "ifop" / "raw"
 OUTPUT_CSV = OUT_DIR / "viajes_observadores.csv"
 LOG_CSV    = OUT_DIR / "scrape_siem_log.csv"
+
+# Archivos de checkpoint: el scraper recorre ~191 observadores en ~2 h y sin
+# esto perdería todo ante un corte (falla de red, tope de tiempo de CI). Se
+# escriben de forma incremental por observador; al terminar se consolidan en los
+# CSV finales y se borran. Al reanudar, los observadores ya presentes se saltan.
+PARTIAL_CSV = OUT_DIR / "viajes_observadores.partial.csv"
+PARTIAL_LOG = OUT_DIR / "scrape_siem_log.partial.csv"
 
 SIEM_URL = "https://portal.ifop.cl/siem/"
 # Las fichas de detalle del viaje cuelgan de esta carpeta; se acceden por GET
@@ -103,6 +108,12 @@ COLS_DETALLE = ["tipo_embarcacion", "especie_objetivo", "numero_lances"]
 
 COLS_SALIDA = ["lugar", "fecha_zarpe", "fecha_recalada",
                "cod_barco", "puerto_zarpe", "puerto_recalada"] + COLS_DETALLE
+
+# Orden de columnas de los CSV de salida (para poder anexar por observador con un
+# esquema estable en el checkpoint).
+OUTPUT_COLS = COLS_SALIDA + ["observador", "rut", "cargo", "estado_match", "score_match"]
+LOG_COLS = ["observador", "cargo", "apellido_paterno", "consulta", "n_coincidencias",
+            "rut_elegido", "nombre_siem", "score", "n_viajes", "estado"]
 
 _RE_RUT = re.compile(r",\s*'(\d+)'\s*\)")
 # Link de la celda "lugar": enviarFormulario(...,'<ficha>.php?id_viaje=<id>',...).
@@ -366,7 +377,7 @@ def _scrape_observador(page, obs: dict, sess: requests.Session) -> tuple[list[di
     else:
         detalles = []
 
-    for v, detalle in zip(viajes, detalles):
+    for v, detalle in zip(viajes, detalles, strict=False):
         v.pop("_ficha", None)
         v.pop("_id_viaje", None)
         for col in COLS_DETALLE:
@@ -383,13 +394,41 @@ def _scrape_observador(page, obs: dict, sess: requests.Session) -> tuple[list[di
     return viajes, log
 
 
+def _clave_obs(obs: dict) -> str:
+    """Clave estable de un observador para el checkpoint (independiente del orden)."""
+    return "|".join(
+        normalizar(str(obs.get(k, "")))
+        for k in ("nombres", "apellido_paterno", "apellido_materno", "cargo")
+    )
+
+
+def _anexar_csv(df: pd.DataFrame, path: Path) -> None:
+    """Anexa `df` al CSV `path`, escribiendo el encabezado solo si no existe aún."""
+    df.to_csv(path, mode="a", header=not path.exists(), index=False)
+
+
+def _cargar_checkpoint() -> tuple[list[dict], list[dict], set[str]]:
+    """Reanuda desde los archivos parciales: (filas_viaje, filas_log, claves_hechas)."""
+    if not PARTIAL_LOG.exists():
+        return [], [], set()
+    log_prev = pd.read_csv(PARTIAL_LOG, dtype=str).fillna("")
+    hechos = set(log_prev["_clave"])
+    log_filas = log_prev.drop(columns=["_clave"]).to_dict("records")
+    if PARTIAL_CSV.exists():
+        todas_filas = pd.read_csv(PARTIAL_CSV, dtype=str).fillna("").to_dict("records")
+    else:
+        todas_filas = []
+    print(f"(checkpoint: se reanuda; {len(hechos)} observadores ya procesados se saltan)\n")
+    return todas_filas, log_filas, hechos
+
+
 def main() -> None:
     observadores = obtener_observadores()
     print(f"Observadores a buscar en el SIEM: {len(observadores)} "
           f"({'headless' if HEADLESS else 'con navegador visible'})\n")
 
-    todas_filas: list[dict] = []
-    log_filas: list[dict] = []
+    OUT_DIR.mkdir(parents=True, exist_ok=True)
+    todas_filas, log_filas, hechos = _cargar_checkpoint()
 
     # Sesión `requests` compartida para descargar las fichas de detalle; sus
     # cookies se refrescan desde el navegador en cada observador.
@@ -402,6 +441,9 @@ def main() -> None:
         page.set_default_timeout(NAV_TIMEOUT_MS)
 
         for i, obs in enumerate(observadores, 1):
+            clave = _clave_obs(obs)
+            if clave in hechos:
+                continue
             print(f"[{i}/{len(observadores)}] {obs['nombres']} ... ", end="", flush=True)
             try:
                 viajes, log = _scrape_observador(page, obs, sess)
@@ -415,19 +457,27 @@ def main() -> None:
                 viajes = []
             todas_filas.extend(viajes)
             log_filas.append(log)
+            hechos.add(clave)
+            # Checkpoint incremental: anexa las filas de este observador (y su
+            # línea de log con la clave) para poder reanudar tras un corte.
+            if viajes:
+                _anexar_csv(pd.DataFrame(viajes).reindex(columns=OUTPUT_COLS), PARTIAL_CSV)
+            _anexar_csv(pd.DataFrame([{**log, "_clave": clave}]).reindex(
+                columns=[*LOG_COLS, "_clave"]), PARTIAL_LOG)
             print(f"{log['estado']}  (viajes: {log['n_viajes']})")
             page.wait_for_timeout(PAUSA_MS)
 
         browser.close()
 
-    OUT_DIR.mkdir(parents=True, exist_ok=True)
-
-    cols = COLS_SALIDA + ["observador", "rut", "cargo", "estado_match", "score_match"]
-    df = pd.DataFrame(todas_filas, columns=cols)
+    df = pd.DataFrame(todas_filas, columns=OUTPUT_COLS)
     df.to_csv(OUTPUT_CSV, index=False)
 
-    log_df = pd.DataFrame(log_filas)
+    log_df = pd.DataFrame(log_filas, columns=LOG_COLS)
     log_df.to_csv(LOG_CSV, index=False)
+
+    # Corrida completa: se descartan los parciales del checkpoint.
+    PARTIAL_CSV.unlink(missing_ok=True)
+    PARTIAL_LOG.unlink(missing_ok=True)
 
     n_ok = int((log_df["estado"] == "match").sum())
     print(f"\nViajes totales: {len(df)} de {len(observadores)} observadores.")

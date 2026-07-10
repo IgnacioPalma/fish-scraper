@@ -12,8 +12,8 @@ Orden (y por qué):
                                                               (usa register.csv + zarpes_atacama_capture.csv)
   5. Copernicus  → data/output/zarpes_atacama_haul_env.csv    (muestrea capas en cada lance)  ← PRODUCTO FINAL
 
-El pipeline de localizaciones no tiene orquestador propio: sus seis etapas se
-ejecutan aquí en orden. El pipeline de emparejamiento VMS↔bitácora NO entra: su
+Cada pipeline tiene su propio orquestador (`run_pipeline.main()`), incluido el
+de localizaciones. El pipeline de emparejamiento VMS↔bitácora NO entra: su
 producto (`bitacora_caldera_jurel_matched.csv`) no alimenta el dataset de lances.
 
 Cada etapa es el `main()` del módulo correspondiente; si una falla, el proceso
@@ -46,11 +46,6 @@ from contextlib import contextmanager
 def _seccion(titulo: str) -> None:
     """Imprime un encabezado de pipeline (bloque mayor)."""
     print(f"\n{'#' * 70}\n#  {titulo}\n{'#' * 70}")
-
-
-def _etapa(titulo: str) -> None:
-    """Imprime un encabezado de etapa (dentro de un pipeline)."""
-    print(f"\n{'=' * 70}\n  {titulo}\n{'=' * 70}")
 
 
 @contextmanager
@@ -122,45 +117,11 @@ def main() -> None:
     with _argv():
         capture_pipeline.main()
 
-    # 4 · Localizaciones (VMS) — sin orquestador propio: etapas en orden ---
+    # 4 · Localizaciones (VMS) ---------------------------------------------
     _seccion("4/5 · Pipeline de localizaciones (VMS → ubicación del lance)")
-    if skip_vms_download:
-        print("(--skip-scrape: se omite la descarga VMS diaria; se reutilizan los CSV crudos)")
-    else:
-        _etapa("4.1 · Descarga de reportes VMS diarios (Sernapesca)")
-        from processing.locations.scraper import download_locations
-        with _argv():
-            download_locations.main()
-
-    _etapa("4.2 · Consolidación de los diarios")
-    from processing.locations.consolidate import consolidate_locations
-    with _argv():
-        consolidate_locations.main()
-
-    _etapa("4.3 · Limpieza (columnas EN, bbox Atacama)")
-    from processing.locations.cleaning import clean_locations
-    with _argv():
-        clean_locations.main()
-
-    _etapa("4.4 · Filtro a la flota de cerco JUREL (+ vessel_code)")
-    from processing.locations.filter import filter_registry
-    with _argv():
-        filter_registry.main()
-
-    _etapa("4.5 · Asignación de pings a zarpes con captura")
-    from processing.locations.zarpes import identify_zarpes
-    with _argv():
-        identify_zarpes.main()
-
-    _etapa("4.6 · Identificación del lugar del lance (PRODUCTO: haul_location)")
-    from processing.locations.fishing_location import identify_fishing_location
-    with _argv():
-        identify_fishing_location.main()
-
-    _etapa("4.7 · Filtro a zarpes de un único lance confiable (PRODUCTO: haul_single)")
-    from processing.locations.single_haul import filter_single_haul
-    with _argv():
-        filter_single_haul.main()
+    from processing.locations import run_pipeline as locations_pipeline
+    with _argv(*(["--skip-scrape"] if skip_vms_download else [])):
+        locations_pipeline.main()
 
     # 5 · Copernicus (descarga de capas → muestreo en lances) --------------
     _seccion("5/5 · Pipeline Copernicus (descarga de capas → muestreo en lances)")
