@@ -19,15 +19,17 @@ por lo que se puede interrumpir y volver a correr sin re-descargar.
 No requiere credenciales: el sitio de Sernapesca es público.
 """
 
+import argparse
+import json
 import os
 import sys
 import time
 import traceback
 import urllib.error
 import urllib.request
-from datetime import date, timedelta
+from collections.abc import Iterator
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
-from typing import Iterator
 
 from processing.utils.date_ranges import END_DATE, START_DATE
 from processing.utils.locations_common import (
@@ -40,7 +42,6 @@ from processing.utils.locations_common import (
     build_old_urls,
 )
 
-
 # __file__ = processing/locations/scraper/download_locations.py → parents[3] = raíz del proyecto.
 OUTPUT_DIR = (
     Path(__file__).resolve().parents[3]
@@ -50,6 +51,13 @@ OUTPUT_DIR = (
 REQUEST_TIMEOUT = 30        # segundos por solicitud HTTP
 REQUEST_DELAY = 0.5         # segundos entre solicitudes que tocan la red
 MAX_RETRIES = 2             # reintentos para errores 5xx / red transitoria
+
+# Marcador central de progreso: se escribe junto a los CSV diarios y se
+# sincroniza a R2 con ellos, así cualquiera puede consultar "N/total" sin
+# contar archivos. Lo consume la corrida en bucle de GitHub Actions.
+PROGRESS_FILE = OUTPUT_DIR / "_vms_progress.json"
+PROGRESS_EVERY = 25          # cada cuántas descargas se reescribe el marcador
+BUDGET_EXIT_CODE = 75        # código de salida cuando queda trabajo (presupuesto agotado)
 
 
 def iter_dates(start: date, end: date) -> Iterator[date]:
@@ -106,7 +114,7 @@ def save_atomically(content: bytes, dest: Path) -> None:
 def fetch_old(d: date, dest: Path) -> tuple[str, str, int]:
     """Descarga el CSV de d usando el formato Drupal (sweep SS = 00..59)."""
     attempts = 0
-    for ss, url in zip(OLD_SS_RANGE, build_old_urls(d)):
+    for ss, url in zip(OLD_SS_RANGE, build_old_urls(d), strict=False):
         attempts += 1
         content = http_get(url)
         time.sleep(REQUEST_DELAY)
@@ -121,7 +129,7 @@ def fetch_new(d: date, dest: Path) -> tuple[str, str, int]:
     attempts = 0
     new_urls = build_new_urls(d)
     labels = ["same-month", "backfill"][: len(new_urls)]
-    for url, label in zip(new_urls, labels):
+    for url, label in zip(new_urls, labels, strict=False):
         attempts += 1
         content = http_get(url)
         time.sleep(REQUEST_DELAY)
@@ -131,11 +139,46 @@ def fetch_new(d: date, dest: Path) -> tuple[str, str, int]:
     return "missing", "", attempts
 
 
+def _write_progress(total: int, last_date: date | None, complete: bool) -> None:
+    """Escribe el marcador central de progreso (JSON durable, se sincroniza a R2).
+
+    `downloaded` cuenta los CSV diarios en disco (acumulativo entre corridas);
+    `complete` indica que se recorrieron TODAS las fechas del rango (aunque algunas
+    queden sin archivo por ser 404 permanentes).
+    """
+    done = len(list(OUTPUT_DIR.glob(f"{FLEET_NAME}_*.csv")))
+    payload = {
+        "total": total,
+        "downloaded": done,
+        "remaining": max(total - done, 0),
+        "last_date": last_date.isoformat() if last_date else None,
+        "complete": complete,
+        "updated_at": datetime.now(UTC).isoformat(timespec="seconds"),
+    }
+    tmp = PROGRESS_FILE.with_name(PROGRESS_FILE.name + ".tmp")
+    tmp.write_text(json.dumps(payload, indent=2))
+    os.replace(tmp, PROGRESS_FILE)
+    estado = "completo" if complete else "parcial"
+    print(f"  progreso persistente: {done}/{total} días en disco ({estado})")
+
+
 def main() -> None:
     # Con line-buffering cada print() aparece al instante (la descarga es larga
     # y conviene ver el progreso fecha por fecha sin esperar a que se llene el buffer).
     sys.stdout.reconfigure(line_buffering=True)
     sys.stderr.reconfigure(line_buffering=True)
+
+    parser = argparse.ArgumentParser(
+        description="Descarga los reportes VMS diarios de Sernapesca a raw_daily/.",
+    )
+    parser.add_argument(
+        "--max-minutes", type=float, default=0.0,
+        help="Presupuesto de tiempo en minutos. Al agotarse, guarda el progreso y "
+             f"sale con código {BUDGET_EXIT_CODE} si aún queda trabajo. 0 = sin límite.",
+    )
+    args = parser.parse_args()
+    budget_s = args.max_minutes * 60 if args.max_minutes > 0 else None
+    run_start = time.monotonic()
 
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -178,12 +221,26 @@ def main() -> None:
     skipped = 0
     missing = 0
     processed = 0
+    downloads_since_flush = 0
+    last_processed: date | None = None
+    stopped_for_budget = False
 
     try:
         for fmt_label, start, end, fetcher in ranges:
+            if stopped_for_budget:
+                break
             print(f"\n--- Rango {fmt_label}: {start} a {end} ---")
             for d in iter_dates(start, end):
+                if budget_s is not None and (time.monotonic() - run_start) >= budget_s:
+                    stopped_for_budget = True
+                    print(
+                        f"\n(presupuesto de {args.max_minutes:.0f} min agotado; "
+                        "se guarda el progreso y se continúa en otra corrida)"
+                    )
+                    break
+
                 processed += 1
+                last_processed = d
                 dest = OUTPUT_DIR / f"{FLEET_NAME}_{d.isoformat()}.csv"
                 prefix = f"[{processed:{width}d}/{total_dates}] {d.isoformat()}"
 
@@ -224,10 +281,16 @@ def main() -> None:
                             "se completará en una corrida posterior.",
                             file=sys.stderr,
                         )
+
+                downloads_since_flush += 1
+                if downloads_since_flush >= PROGRESS_EVERY:
+                    _write_progress(total_dates, d, complete=False)
+                    downloads_since_flush = 0
     except Exception as exc:
         # Limpiar cualquier .tmp dejado por una descarga interrumpida.
         for leftover in OUTPUT_DIR.glob("*.tmp"):
             leftover.unlink(missing_ok=True)
+        _write_progress(total_dates, last_processed, complete=False)
         print(
             "ERROR: la descarga desde Sernapesca falló.\n"
             f"       Detalle: {exc}\n"
@@ -236,6 +299,9 @@ def main() -> None:
         )
         traceback.print_exc()
         sys.exit(2)
+
+    complete = not stopped_for_budget
+    _write_progress(total_dates, last_processed, complete=complete)
 
     total_bytes = sum(f.stat().st_size for f in OUTPUT_DIR.glob(f"{FLEET_NAME}_*.csv"))
     print(
@@ -248,6 +314,11 @@ def main() -> None:
         f"  Tamaño total en {OUTPUT_DIR}: "
         f"{total_bytes / (1024 * 1024):.1f} MB"
     )
+
+    # Presupuesto agotado con trabajo pendiente: salir con un código que el bucle
+    # de GitHub Actions interpreta como "seguir" (re-despacharse).
+    if stopped_for_budget:
+        sys.exit(BUDGET_EXIT_CODE)
 
 
 if __name__ == "__main__":

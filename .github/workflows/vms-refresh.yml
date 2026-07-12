@@ -1,0 +1,81 @@
+name: vms-refresh
+
+# Descarga los reportes VMS diarios de Sernapesca a R2, POR TANDAS, y se
+# re-despacha sola hasta terminar (sin intervención humana). El corpus VMS es
+# grande y puede no caber en una sola corrida bajo el tope de 6 h de GitHub.
+#
+# Cada corrida:
+#   1. baja de R2 lo ya descargado (+ el marcador de progreso _vms_progress.json);
+#   2. descarga en tandas de CHUNK_MIN minutos, subiendo a R2 tras cada tanda
+#      (flush incremental → un corte pierde a lo sumo una tanda, no toda la corrida);
+#   3. si agota su presupuesto total sin terminar, dispara otra corrida.
+#
+# El bucle termina solo cuando el descargador recorrió todas las fechas
+# (código de salida 0). Hay un tope de re-despachos como red de seguridad.
+on:
+  workflow_dispatch:
+    inputs:
+      attempt:
+        description: "Contador interno de re-despacho (no editar al lanzar a mano)"
+        default: "1"
+
+permissions:
+  contents: read
+  actions: write  # necesario para re-despacharse con gh workflow run
+
+concurrency:
+  group: vms-refresh
+  cancel-in-progress: false
+
+env:
+  R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+  R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+  R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+  R2_BUCKET: ${{ secrets.R2_BUCKET }}
+  CHUNK_MIN: "15"          # minutos por tanda entre flushes a R2
+  TOTAL_BUDGET_MIN: "300"  # presupuesto del job antes de re-despachar (< timeout-minutes)
+  MAX_ATTEMPTS: "20"       # tope de re-despachos (red de seguridad)
+
+jobs:
+  vms:
+    runs-on: ubuntu-latest
+    timeout-minutes: 330  # ~5.5 h, con margen bajo el tope de 6 h
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+      - run: uv sync
+      - name: Traer VMS + progreso desde R2
+        run: scripts/r2_pull.sh vms
+      - name: Descargar por tandas (flush incremental a R2)
+        id: dl
+        run: |
+          set +e
+          start=$(date +%s)
+          done=false
+          while :; do
+            uv run python -m processing.locations.scraper.download_locations --max-minutes "$CHUNK_MIN"
+            code=$?
+            scripts/r2_push.sh vms                 # flush durable tras cada tanda
+            if [ "$code" -eq 0 ]; then done=true; break; fi
+            if [ "$code" -ne 75 ]; then exit "$code"; fi   # 75 = queda trabajo; otro = error real
+            elapsed=$(( ($(date +%s) - start) / 60 ))
+            if [ "$elapsed" -ge "$TOTAL_BUDGET_MIN" ]; then break; fi
+          done
+          echo "done=$done" >> "$GITHUB_OUTPUT"
+      - name: Flush final a R2
+        if: always()
+        run: scripts/r2_push.sh vms
+      - name: Re-despachar si queda trabajo
+        if: steps.dl.outputs.done == 'false'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          attempt=$(( ${{ github.event.inputs.attempt || 1 }} + 1 ))
+          if [ "$attempt" -gt "$MAX_ATTEMPTS" ]; then
+            echo "::error::Tope de $MAX_ATTEMPTS re-despachos alcanzado sin completar VMS; revisar."
+            exit 1
+          fi
+          echo "Queda trabajo; re-despachando vms-refresh (intento $attempt)…"
+          gh workflow run vms-refresh.yml --ref "${{ github.ref_name }}" -f attempt="$attempt"

@@ -4,6 +4,10 @@ name: refresh-raw
 # Se dispara a mano; el corpus histórico es estático, así que se corre rara vez.
 # Cada job baja su porción de raw/ desde R2 antes de scrapear (skip-if-exists) y
 # vuelve a subirla al terminar; los jobs escriben claves R2 disjuntas.
+#
+# NOTA: la descarga VMS NO está acá. Es la más larga y puede no caber en una
+# corrida, así que vive en su propio workflow con bucle de re-despacho:
+# .github/workflows/vms-refresh.yml (dispararlo por separado).
 on:
   workflow_dispatch:
 
@@ -36,23 +40,6 @@ jobs:
       - name: Subir IFOP crudo a R2
         if: always()  # sube el checkpoint parcial aunque el job se corte
         run: scripts/r2_push.sh ifop
-
-  vms:
-    runs-on: ubuntu-latest
-    timeout-minutes: 180
-    steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v5
-        with:
-          enable-cache: true
-      - run: uv sync
-      - name: Traer VMS diarios existentes (skip-if-exists por día)
-        run: scripts/r2_pull.sh vms
-      - name: Descargar reportes VMS diarios (Sernapesca)
-        run: uv run python -m processing.locations.scraper.download_locations
-      - name: Subir VMS crudo a R2
-        if: always()
-        run: scripts/r2_push.sh vms
 
   copernicus:
     runs-on: ubuntu-latest
