@@ -62,17 +62,12 @@ import numpy as np
 import pandas as pd
 import xarray as xr
 
+from processing.utils.datasets import active_source
 from processing.utils.regions import active_region
 
 OUTPUT_DIR = Path(__file__).resolve().parents[2] / "data" / "output"
 COPERNICUS_DIR = Path(__file__).resolve().parents[2] / "data" / "copernicus"
-HAUL_CSV = (
-    Path(__file__).resolve().parents[2]
-    / "data" / "processing" / "locations" / "single_haul" / "zarpes_atacama_haul_single.csv"
-)
-# El producto final lleva el slug de la región activa (REGION), p.ej.
-# zarpes_chile_haul_env.csv, para que distintas regiones no se pisen en data/output/.
-OUTPUT_CSV = OUTPUT_DIR / f"zarpes_{active_region().key}_haul_env.csv"
+_LOCATIONS_DIR = Path(__file__).resolve().parents[2] / "data" / "processing" / "locations"
 
 EARTH_RADIUS_KM = 6371.0
 # Radio máximo para reemplazar una celda en tierra por la celda de mar más cercana.
@@ -160,6 +155,13 @@ def _muestrear(da: xr.DataArray, ts: pd.Timestamp, lat: float, lon: float):
 
 def main() -> None:
     sys.stdout.reconfigure(line_buffering=True)
+
+    # Rutas scopeadas por fuente (SOURCE), resueltas en tiempo de ejecución para que
+    # run_all pueda alternar SOURCE en el mismo proceso. `backup` lee
+    # locations/backup/single_haul/ y escribe zarpes_<region>_backup_haul_env.csv.
+    source = active_source()
+    HAUL_CSV = source.scoped(_LOCATIONS_DIR) / "single_haul" / "zarpes_atacama_haul_single.csv"
+    OUTPUT_CSV = OUTPUT_DIR / f"zarpes_{active_region().key}{source.output_suffix()}_haul_env.csv"
 
     if not HAUL_CSV.exists():
         sys.exit(

@@ -1,17 +1,45 @@
 # Pipeline de captura (vessel capture)
 
-Normaliza la bitácora IFOP cruda (registros de captura por recalada), la reduce a
-las recaladas de jurel en Caldera dentro del rango de fechas del proyecto, y deja
-un dataset final por zarpe (= recalada) enriquecido con el nombre de la
-embarcación. La bitácora es la **espina** del dataset: registra TODAS las
-recaladas, no solo las observadas por IFOP. Es el sucesor del antiguo pipeline
-`processing/bitacora` (etapas de limpieza y filtrado); el emparejamiento VMS y el
-cruce de nombres↔COD_BARCO siguen viviendo en `processing/bitacora` y consumen las
-salidas de aquí.
+Normaliza la bitácora de captura cruda (registros por recalada), la reduce a las
+recaladas de jurel en el/los puerto(s) de la región activa dentro del rango de
+fechas del proyecto, y deja un dataset final por zarpe (= recalada) enriquecido
+con el nombre de la embarcación. La bitácora es la **espina** del dataset: registra
+TODAS las recaladas, no solo las observadas por IFOP. Es el sucesor del antiguo
+pipeline `processing/bitacora` (etapas de limpieza y filtrado); el emparejamiento
+VMS y el cruce de nombres↔COD_BARCO siguen viviendo en `processing/bitacora` y
+consumen las salidas de aquí.
 
 > La etapa 3 (unificación) solo necesita `data/processing/ifop/vessels.csv` del
 > pipeline IFOP (para anexar `vessel_name`). Generalo antes con
 > `uv run python -m processing.ifop.run_pipeline`.
+
+## Dos fuentes de captura (`SOURCE`)
+
+El pipeline soporta DOS insumos crudos, seleccionados por la variable de entorno
+`SOURCE` (ver [processing/utils/datasets.py](../utils/datasets.py)); ambos producen
+el MISMO esquema de salida, así que las etapas 2 y 3 y todo lo de aguas abajo son
+idénticas:
+
+| `SOURCE` | Crudo | Formato | Alcance | Salidas |
+|---|---|---|---|---|
+| `bitacora` (por defecto) | `bitacora.csv` | ancho (una columna por especie), comas | Atacama artesanal | rutas históricas (`capture/…`) |
+| `backup` | `backup.csv` | largo (una fila por especie por lance), `;` | nacional; se filtra a flota `Artesanal` | anidadas bajo `capture/backup/…` |
+
+Para que las dos corridas NO se pisen, `backup` anida todos sus intermedios y su
+producto final bajo un subdirectorio `backup/`; `bitacora` conserva las rutas
+históricas intactas. `SOURCE` es ortogonal a `REGION`: `REGION` define la geografía
+(puerto de interés, bbox), `SOURCE` el archivo de entrada. La etapa 1 traduce cada
+formato al esquema común; la etapa 1 de `backup` filtra a la flota artesanal y
+pivotea el formato largo a ancho sumando el peso por especie por recalada.
+
+```bash
+SOURCE=backup uv run python -m processing.capture.run_pipeline   # → capture/backup/…
+```
+
+El orquestador global [processing/run_all.py](../run_all.py) corre AMBAS fuentes y
+deja dos datasets de modelado comparables
+(`data/output/zarpes_<region>_haul_env.csv` y
+`data/output/zarpes_<region>_backup_haul_env.csv`).
 
 ## Ejecutar el pipeline completo
 
@@ -29,17 +57,21 @@ uv run python -m processing.capture.unify.unify_zarpes        # → data/process
 
 ## Entrada
 
-La bitácora IFOP cruda debe estar en:
+Los crudos de captura deben estar (ambos en el mismo directorio, compartido):
 
 ```
-data/processing/capture/input/bitacora.csv
+data/processing/capture/input/bitacora.csv   # SOURCE=bitacora (por defecto)
+data/processing/capture/input/backup.csv     # SOURCE=backup
 ```
 
 ## Etapas
 
+Las rutas de salida se muestran para `SOURCE=bitacora` (histórico); con
+`SOURCE=backup` cuelgan de `capture/backup/…`.
+
 | # | Módulo | Entrada | Salida |
 |---|---|---|---|
-| 1 | `cleaning.clean_capture` | `input/bitacora.csv` | `data/processing/capture/cleaned/capture.csv` |
+| 1 | `cleaning.clean_capture` | `input/<bitacora\|backup>.csv` | `data/processing/capture/cleaned/capture.csv` |
 | 2 | `filter.filter_capture` | `cleaned/capture.csv` | `data/processing/capture/capture.csv` |
 | 3 | `unify.unify_zarpes` | `capture.csv` + `vessels.csv` | `data/processing/capture/zarpes_atacama_capture.csv` |
 

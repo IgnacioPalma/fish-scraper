@@ -1,16 +1,28 @@
 """
-Orquesta TODO el proyecto de punta a punta: encadena los seis pipelines en el
-orden que imponen sus dependencias de datos, hasta dejar el dataset de modelado
-`data/output/zarpes_atacama_haul_env.csv`.
+Orquesta TODO el proyecto de punta a punta: encadena los pipelines en el orden
+que imponen sus dependencias de datos, hasta dejar UN dataset de modelado POR
+FUENTE de captura (`data/output/zarpes_<region>[_<source>]_haul_env.csv`).
+
+Dos fuentes de captura (variable de entorno SOURCE, ver
+processing/utils/datasets.py): `bitacora` (por defecto, rutas históricas) y
+`backup` (respaldo nacional, anida bajo subdirectorios `backup/`). run_all corre
+AMBAS para producir dos datasets comparables. Las etapas caras que NO dependen de
+la fuente (IFOP, registro, VMS descarga→filtro, descarga Copernicus) se corren UNA
+sola vez; solo la cola dependiente de la fuente (captura → lugar del lance →
+muestreo) se repite por fuente.
 
 Orden (y por qué):
 
+  Compartido (una vez):
   1. IFOP        → data/processing/ifop/zarpes_atacama.csv + vessels.csv
   2. Registry    → data/processing/registry/register.csv      (usa vessels.csv de IFOP)
-  3. Captura     → data/processing/capture/zarpes_atacama_capture.csv     (espina = bitácora; usa vessels de IFOP)
-  4. Localizaciones (VMS) → data/processing/locations/fishing_location/zarpes_atacama_haul_location.csv
-                                                              (usa register.csv + zarpes_atacama_capture.csv)
-  5. Copernicus  → data/output/zarpes_atacama_haul_env.csv    (muestrea capas en cada lance)  ← PRODUCTO FINAL
+  3. Localizaciones VMS, etapas 1-4 → data/processing/locations/filtered/  (traza compartida)
+  4. Copernicus, descarga de capas  → data/copernicus/*.nc                 (grillas compartidas)
+
+  Por fuente (bitacora, backup):
+  5. Captura     → data/processing/capture[/<source>]/zarpes_atacama_capture.csv  (espina; usa vessels de IFOP)
+  6. Localizaciones VMS, etapas 5-7 → …/single_haul/zarpes_atacama_haul_single.csv
+  7. Copernicus, muestreo           → data/output/zarpes_<region>[_<source>]_haul_env.csv  ← PRODUCTO FINAL
 
 Cada pipeline tiene su propio orquestador (`run_pipeline.main()`), incluido el
 de localizaciones. El pipeline de emparejamiento VMS↔bitácora NO entra: su
@@ -39,8 +51,13 @@ Uso:
 """
 
 import argparse
+import os
 import sys
 from contextlib import contextmanager
+
+# Fuentes de captura a correr (ver processing/utils/datasets.py). El orden deja
+# `bitacora` (rutas históricas) primero y `backup` después.
+SOURCES = ["bitacora", "backup"]
 
 
 def _seccion(titulo: str) -> None:
@@ -111,26 +128,51 @@ def main() -> None:
     with _argv(*registry_argv):
         registry_pipeline.main()
 
-    # 3 · Captura ----------------------------------------------------------
-    _seccion("3/5 · Pipeline de captura (cleaning → filter → unify)")
     from processing.capture import run_pipeline as capture_pipeline
-    with _argv():
-        capture_pipeline.main()
-
-    # 4 · Localizaciones (VMS) ---------------------------------------------
-    _seccion("4/5 · Pipeline de localizaciones (VMS → ubicación del lance)")
     from processing.locations import run_pipeline as locations_pipeline
-    with _argv(*(["--skip-scrape"] if skip_vms_download else [])):
+    from processing.copernicus import run_pipeline as copernicus_pipeline
+    from processing.utils.datasets import SOURCES as REGISTERED_SOURCES
+    from processing.utils.regions import active_region
+
+    # 3 · Localizaciones VMS — etapas COMPARTIDAS (descarga → filtro), una vez ----
+    _seccion("3/5 · Localizaciones VMS · etapas compartidas (descarga → filtro a la flota)")
+    with _argv(*(["--skip-scrape"] if skip_vms_download else []), "--shared-only"):
         locations_pipeline.main()
 
-    # 5 · Copernicus (descarga de capas → muestreo en lances) --------------
-    _seccion("5/5 · Pipeline Copernicus (descarga de capas → muestreo en lances)")
-    from processing.copernicus import run_pipeline as copernicus_pipeline
-    with _argv(*(["--skip-download"] if args.skip_download else [])):
+    # 4 · Copernicus — descarga de capas COMPARTIDA, una vez ---------------------
+    _seccion("4/5 · Copernicus · descarga de capas compartida")
+    with _argv(*(["--skip-download"] if args.skip_download else []), "--download-only"):
         copernicus_pipeline.main()
 
-    from processing.utils.regions import active_region
-    _seccion(f"Pipeline completo · dataset de modelado en data/output/zarpes_{active_region().key}_haul_env.csv")
+    # 5 · Cola dependiente de la fuente, una vez por SOURCE ----------------------
+    previo_source = os.environ.get("SOURCE")
+    try:
+        for source in SOURCES:
+            if source not in REGISTERED_SOURCES:
+                sys.exit(f"ERROR: SOURCE '{source}' no está registrada en datasets.py.")
+            os.environ["SOURCE"] = source
+            _seccion(f"5/5 · Fuente '{source}' · captura → lugar del lance → muestreo")
+
+            with _argv():
+                capture_pipeline.main()
+            with _argv("--source-only"):
+                locations_pipeline.main()
+            # Reutiliza las grillas ya descargadas: aquí solo se muestrea.
+            with _argv("--skip-download"):
+                copernicus_pipeline.main()
+    finally:
+        if previo_source is None:
+            os.environ.pop("SOURCE", None)
+        else:
+            os.environ["SOURCE"] = previo_source
+
+    region = active_region().key
+    productos = "\n".join(
+        f"  data/output/zarpes_{region}"
+        f"{'' if s == 'bitacora' else '_' + s}_haul_env.csv"
+        for s in SOURCES
+    )
+    _seccion(f"Pipeline completo · datasets de modelado:\n{productos}")
 
 
 if __name__ == "__main__":

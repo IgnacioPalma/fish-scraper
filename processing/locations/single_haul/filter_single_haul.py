@@ -30,11 +30,10 @@ from pathlib import Path
 
 import pandas as pd
 
+from processing.utils.datasets import active_source
+
 
 LOCATIONS_DIR = Path(__file__).resolve().parents[3] / "data" / "processing" / "locations"
-OUTPUT_DIR = LOCATIONS_DIR / "single_haul"
-HAUL_CSV = LOCATIONS_DIR / "fishing_location" / "zarpes_atacama_haul_location.csv"
-SINGLE_CSV = OUTPUT_DIR / "zarpes_atacama_haul_single.csv"
 
 # Condiciones del conjunto limpio.
 CONFIDENCE = "alta"
@@ -51,6 +50,13 @@ def filtrar(df: pd.DataFrame) -> pd.DataFrame:
 def main() -> None:
     sys.stdout.reconfigure(line_buffering=True)
     sys.stderr.reconfigure(line_buffering=True)
+
+    # Entrada/salida scopeadas por fuente (SOURCE): `backup` anida bajo
+    # locations/backup/.
+    source_dir = active_source().scoped(LOCATIONS_DIR)
+    HAUL_CSV = source_dir / "fishing_location" / "zarpes_atacama_haul_location.csv"
+    OUTPUT_DIR = source_dir / "single_haul"
+    SINGLE_CSV = OUTPUT_DIR / "zarpes_atacama_haul_single.csv"
 
     if not HAUL_CSV.exists():
         print(

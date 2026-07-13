@@ -15,18 +15,23 @@ from pathlib import Path
 
 import pandas as pd
 
+from processing.utils.datasets import active_source
 from processing.utils.date_ranges import END_DATE, START_DATE
 from processing.utils.regions import active_region
 from processing.utils.species import ALL_SPECIES, SPECIES_OF_INTEREST
 
 
 DATA_DIR = Path(__file__).resolve().parents[3] / "data"
-INPUT_CSV = DATA_DIR / "processing" / "capture" / "cleaned" / "capture.csv"
-OUTPUT_DIR = DATA_DIR / "processing" / "capture"
-OUTPUT_CSV = OUTPUT_DIR / "capture.csv"
 
 
 def main() -> None:
+    # Rutas scopeadas por fuente (SOURCE): `bitacora` conserva las rutas
+    # históricas; `backup` anida bajo capture/backup/.
+    capture_dir = active_source().scoped(DATA_DIR / "processing" / "capture")
+    INPUT_CSV = capture_dir / "cleaned" / "capture.csv"
+    OUTPUT_DIR = capture_dir
+    OUTPUT_CSV = OUTPUT_DIR / "capture.csv"
+
     if not INPUT_CSV.exists():
         print(
             f"ERROR: no se encontró {INPUT_CSV}.\n"

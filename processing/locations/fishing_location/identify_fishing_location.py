@@ -60,15 +60,13 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
+from processing.utils.datasets import active_source
 from processing.utils.date_ranges import END_DATE, START_DATE
 from processing.utils.locations_common import FLEET_NAME
 from processing.utils.regions import active_region
 
 
 DATA_DIR = Path(__file__).resolve().parents[3] / "data" / "processing" / "locations"
-ZARPES_DIR = DATA_DIR / "zarpes"
-OUTPUT_DIR = DATA_DIR / "fishing_location"            # traza de pings + resumen por zarpe
-UNIFIED_ZARPES_CSV = DATA_DIR.parent / "capture" / "zarpes_atacama_capture.csv"
 
 EARTH_RADIUS_KM = 6371.0
 
@@ -353,9 +351,16 @@ def main() -> None:
     sys.stderr.reconfigure(line_buffering=True)
 
     tag = _rango_tag()
-    input_csv = ZARPES_DIR / f"locations_{FLEET_NAME}_{tag}_zarpes.csv"
-    pings_csv = OUTPUT_DIR / f"locations_{FLEET_NAME}_{tag}_fishing.csv"
-    summary_csv = OUTPUT_DIR / "zarpes_atacama_haul_location.csv"
+    # Entradas/salidas scopeadas por fuente (SOURCE): `backup` anida bajo
+    # locations/backup/ y lee capture/backup/zarpes_atacama_capture.csv.
+    source = active_source()
+    zarpes_dir = source.scoped(DATA_DIR) / "zarpes"
+    output_dir = source.scoped(DATA_DIR) / "fishing_location"
+    unified_zarpes_csv = source.scoped(DATA_DIR.parent / "capture") / "zarpes_atacama_capture.csv"
+
+    input_csv = zarpes_dir / f"locations_{FLEET_NAME}_{tag}_zarpes.csv"
+    pings_csv = output_dir / f"locations_{FLEET_NAME}_{tag}_fishing.csv"
+    summary_csv = output_dir / "zarpes_atacama_haul_location.csv"
 
     if not input_csv.exists():
         print(
@@ -366,9 +371,9 @@ def main() -> None:
         )
         sys.exit(1)
 
-    if not UNIFIED_ZARPES_CSV.exists():
+    if not unified_zarpes_csv.exists():
         print(
-            f"ERROR: no existe {UNIFIED_ZARPES_CSV}.\n"
+            f"ERROR: no existe {unified_zarpes_csv}.\n"
             "       Generá el dataset unificado de zarpes con captura primero con:\n"
             "           uv run python -m processing.capture.unify.unify_zarpes",
             file=sys.stderr,
@@ -377,11 +382,11 @@ def main() -> None:
 
     ports = active_region().port_coords()
     df = pd.read_csv(input_csv, dtype=str)
-    captura = pd.read_csv(UNIFIED_ZARPES_CSV, dtype=str)
+    captura = pd.read_csv(unified_zarpes_csv, dtype=str)
 
     pings, resumen, stats = identificar_pesca(df, ports, captura)
 
-    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+    output_dir.mkdir(parents=True, exist_ok=True)
     pings.to_csv(pings_csv, index=False)
     resumen.to_csv(summary_csv, index=False)
 

@@ -38,12 +38,11 @@ from pathlib import Path
 
 import pandas as pd
 
+from processing.utils.datasets import active_source
+
 
 DATA_DIR    = Path(__file__).resolve().parents[3] / "data"
-CAPTURE_CSV = DATA_DIR / "processing" / "capture" / "capture.csv"
 VESSELS_CSV = DATA_DIR / "processing" / "ifop" / "vessels.csv"
-OUTPUT_DIR  = DATA_DIR / "processing" / "capture"
-OUTPUT_CSV  = OUTPUT_DIR / "zarpes_atacama_capture.csv"
 
 # Columnas de salida (orden final del dataset de zarpes con captura).
 OUTPUT_COLS = [
@@ -80,6 +79,12 @@ def construir(capture: pd.DataFrame, vessels: pd.DataFrame) -> pd.DataFrame:
 
 
 def main() -> None:
+    # Rutas scopeadas por fuente (SOURCE): `backup` anida bajo capture/backup/.
+    capture_dir = active_source().scoped(DATA_DIR / "processing" / "capture")
+    CAPTURE_CSV = capture_dir / "capture.csv"
+    OUTPUT_DIR  = capture_dir
+    OUTPUT_CSV  = OUTPUT_DIR / "zarpes_atacama_capture.csv"
+
     for ruta, pista in (
         (CAPTURE_CSV, "uv run python -m processing.capture.filter.filter_capture"),
         (VESSELS_CSV, "uv run python -m processing.ifop.identifiers.extract_vessels"),

@@ -1,8 +1,13 @@
 name: pipeline
 
-# Procesa el corpus crudo cacheado en R2 y publica el dataset de modelado.
+# Procesa el corpus crudo cacheado en R2 y publica los datasets de modelado.
 # NO scrapea ni descarga: baja raw/ desde R2, corre run_all con
 # --skip-scrape --skip-download (solo cómputo, sin navegador) y sube output/.
+# run_all produce UN dataset por fuente de captura (SOURCE): `bitacora`
+# (zarpes_<region>_haul_env.csv) y `backup` (zarpes_<region>_backup_haul_env.csv).
+# El pull `raw` trae ambos crudos (bitacora.csv + backup.csv) desde el mismo
+# prefijo `capture/input`, así que basta con haber subido backup.csv una vez
+# (scripts/r2_push.sh capture).
 # Requiere que refresh-ifop, refresh-copernicus y vms-refresh hayan poblado R2 antes.
 on:
   workflow_dispatch:
@@ -51,13 +56,17 @@ jobs:
           {
             echo "## Pipeline histórico"
             echo ""
-            out="data/output/zarpes_${REGION}_haul_env.csv"
-            if [ -f "$out" ]; then
-              n=$(($(wc -l < "$out") - 1))
-              echo "- Región (\`REGION\`): \`${REGION}\`"
-              echo "- Dataset de modelado: **${n} filas** en \`${out}\`"
-              echo "- Publicado en R2: \`s3://${R2_BUCKET}/output/${REGION}/\`"
-            else
-              echo "- ⚠️ No se generó \`${out}\`."
-            fi
+            echo "- Región (\`REGION\`): \`${REGION}\`"
+            echo "- Publicado en R2: \`s3://${R2_BUCKET}/output/${REGION}/\`"
+            echo ""
+            for src in bitacora backup; do
+              suffix=""; [ "$src" = "backup" ] && suffix="_backup"
+              out="data/output/zarpes_${REGION}${suffix}_haul_env.csv"
+              if [ -f "$out" ]; then
+                n=$(($(wc -l < "$out") - 1))
+                echo "- Fuente \`${src}\`: **${n} filas** en \`${out}\`"
+              else
+                echo "- ⚠️ Fuente \`${src}\`: no se generó \`${out}\`."
+              fi
+            done
           } >> "$GITHUB_STEP_SUMMARY"

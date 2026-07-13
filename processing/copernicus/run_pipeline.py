@@ -45,6 +45,10 @@ def main() -> None:
         "--skip-download", action="store_true",
         help="No re-descargar las grillas; reutilizar las existentes en data/copernicus/.",
     )
+    parser.add_argument(
+        "--download-only", action="store_true",
+        help="Solo descarga las grillas (independiente de la fuente); omite el muestreo.",
+    )
     args = parser.parse_args()
 
     if args.skip_download:
@@ -65,6 +69,10 @@ def main() -> None:
         _etapa("4/5 · Descarga BGC (O₂ mínimo 0–200 m + nppv)")
         from processing.copernicus import download_bgc
         download_bgc.main()
+
+    if args.download_only:
+        _etapa("Descarga Copernicus completa (--download-only: se omite el muestreo)")
+        return
 
     _etapa("5/5 · Muestreo de capas en cada lance")
     from processing.copernicus import sample_haul_environment

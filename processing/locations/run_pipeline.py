@@ -18,6 +18,14 @@ La etapa 4 (filtro a la flota de cerco) requiere `data/processing/registry/regis
 y la etapa 5 requiere `data/processing/capture/zarpes_atacama_capture.csv`; ambos
 provienen de pipelines anteriores (ver processing/run_all.py).
 
+Fases (para el orquestador de dos fuentes, ver processing/run_all.py):
+  - Etapas 1-4 (descarga → filtro a la flota) son INDEPENDIENTES de la fuente de
+    captura (SOURCE): la traza VMS es la misma. `--shared-only` corre solo esas.
+  - Etapas 5-7 (asignación de pings → lugar del lance → único lance) SÍ dependen
+    de la fuente (leen `capture[/<source>]/zarpes_atacama_capture.csv`).
+    `--source-only` corre solo esas, reutilizando el filtrado compartido.
+  Sin ninguno de los dos flags corre las 7 (comportamiento por defecto).
+
 Uso:
     uv run python -m processing.locations.run_pipeline
     # Reutiliza los CSV diarios ya descargados y arranca desde la consolidación
@@ -42,45 +50,58 @@ def main() -> None:
         action="store_true",
         help="No re-descargar los reportes VMS diarios; reutilizar los CSV crudos existentes.",
     )
+    parser.add_argument(
+        "--shared-only", action="store_true",
+        help="Solo las etapas independientes de la fuente (1-4: descarga → filtro).",
+    )
+    parser.add_argument(
+        "--source-only", action="store_true",
+        help="Solo las etapas dependientes de la fuente (5-7: pings → lugar del lance).",
+    )
     args = parser.parse_args()
 
-    if args.skip_scrape:
-        print("(--skip-scrape: se omite la descarga VMS diaria; se reutilizan los CSV crudos)")
-    else:
-        _etapa("1/7 · Descarga de reportes VMS diarios (Sernapesca)")
-        from processing.locations.scraper import download_locations
+    run_shared = not args.source_only
+    run_source = not args.shared_only
 
-        download_locations.main()
+    if run_shared:
+        if args.skip_scrape:
+            print("(--skip-scrape: se omite la descarga VMS diaria; se reutilizan los CSV crudos)")
+        else:
+            _etapa("1/7 · Descarga de reportes VMS diarios (Sernapesca)")
+            from processing.locations.scraper import download_locations
 
-    _etapa("2/7 · Consolidación de los diarios")
-    from processing.locations.consolidate import consolidate_locations
+            download_locations.main()
 
-    consolidate_locations.main()
+        _etapa("2/7 · Consolidación de los diarios")
+        from processing.locations.consolidate import consolidate_locations
 
-    _etapa("3/7 · Limpieza (columnas EN, bbox de la región)")
-    from processing.locations.cleaning import clean_locations
+        consolidate_locations.main()
 
-    clean_locations.main()
+        _etapa("3/7 · Limpieza (columnas EN, bbox de la región)")
+        from processing.locations.cleaning import clean_locations
 
-    _etapa("4/7 · Filtro a la flota de cerco JUREL (+ vessel_code)")
-    from processing.locations.filter import filter_registry
+        clean_locations.main()
 
-    filter_registry.main()
+        _etapa("4/7 · Filtro a la flota de cerco JUREL (+ vessel_code)")
+        from processing.locations.filter import filter_registry
 
-    _etapa("5/7 · Asignación de pings a zarpes con captura")
-    from processing.locations.zarpes import identify_zarpes
+        filter_registry.main()
 
-    identify_zarpes.main()
+    if run_source:
+        _etapa("5/7 · Asignación de pings a zarpes con captura")
+        from processing.locations.zarpes import identify_zarpes
 
-    _etapa("6/7 · Identificación del lugar del lance (PRODUCTO: haul_location)")
-    from processing.locations.fishing_location import identify_fishing_location
+        identify_zarpes.main()
 
-    identify_fishing_location.main()
+        _etapa("6/7 · Identificación del lugar del lance (PRODUCTO: haul_location)")
+        from processing.locations.fishing_location import identify_fishing_location
 
-    _etapa("7/7 · Filtro a zarpes de un único lance confiable (PRODUCTO: haul_single)")
-    from processing.locations.single_haul import filter_single_haul
+        identify_fishing_location.main()
 
-    filter_single_haul.main()
+        _etapa("7/7 · Filtro a zarpes de un único lance confiable (PRODUCTO: haul_single)")
+        from processing.locations.single_haul import filter_single_haul
+
+        filter_single_haul.main()
 
     _etapa("Pipeline de localizaciones completo")
 
