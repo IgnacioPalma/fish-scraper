@@ -47,9 +47,10 @@ from processing.utils.cmems_common import (
     LAT_MIN,
     LON_MAX,
     LON_MIN,
-    print_summary,
+    print_summary_da,
     read_credentials,
     regrid_to_target,
+    stream_dataset_to_csv,
 )
 from processing.utils.date_ranges import END_DATE as GLOBAL_END
 from processing.utils.date_ranges import START_DATE as GLOBAL_START
@@ -167,15 +168,20 @@ def regrid_and_export(nc_path: str, csv_path: str) -> str:
     ds_regridded = regrid_to_target(ds).load()
     ds_regridded.to_netcdf(nc_path)
 
-    print(f"Convirtiendo {nc_path} a CSV...")
-    df = ds_regridded[list(OUTPUT_VARIABLES)].to_dataframe().reset_index()
-    df = df[["time", "latitude", "longitude", *OUTPUT_VARIABLES]].dropna(
-        subset=list(OUTPUT_VARIABLES), how="all"
+    print(f"Convirtiendo {nc_path} a CSV (streaming por bloques de tiempo)...")
+    # Se escribe por bloques de tiempo (stream_dataset_to_csv) para no
+    # expandir el cubo completo a DataFrame de una sola vez (pico de memoria
+    # → OOM en CI). how="all" conserva la fila si al menos una variable trae
+    # valor.
+    stream_dataset_to_csv(
+        ds_regridded[list(OUTPUT_VARIABLES)],
+        list(OUTPUT_VARIABLES),
+        csv_path,
+        dropna_how="all",
     )
-    df.to_csv(csv_path, index=False)
 
     for col, unit in OUTPUT_VARIABLES.items():
-        print_summary(df.dropna(subset=[col]), col, unit)
+        print_summary_da(ds_regridded[col], col, unit)
     return csv_path
 
 

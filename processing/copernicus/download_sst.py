@@ -27,9 +27,10 @@ from processing.utils.cmems_common import (
     LAT_MIN,
     LON_MAX,
     LON_MIN,
-    print_summary,
+    print_summary_da,
     read_credentials,
     regrid_to_target,
+    stream_dataset_to_csv,
 )
 from processing.utils.date_ranges import END_DATE as GLOBAL_END
 from processing.utils.date_ranges import START_DATE as GLOBAL_START
@@ -109,19 +110,18 @@ def regrid_and_export(nc_path: str, csv_path: str) -> str:
     # Reescribir el NetCDF ya regrillado para que Jupyter, etc. vean la grilla unificada
     ds_regridded.to_netcdf(nc_path)
 
-    print(f"Convirtiendo {nc_path} a CSV...")
-    df = ds_regridded[VARIABLE].to_dataframe().reset_index()
-
-    # analysed_sst llega en Kelvin -> convertir a Celsius
-    df["analysed_sst_celsius"] = df[VARIABLE] - 273.15
-
-    # Quedarse con las columnas pedidas y descartar tierra (NaN sobre continente)
-    df = df[["time", "latitude", "longitude", "analysed_sst_celsius"]].dropna(
-        subset=["analysed_sst_celsius"]
+    print(f"Convirtiendo {nc_path} a CSV (streaming por bloques de tiempo)...")
+    # analysed_sst llega en Kelvin -> convertir a Celsius. El CSV se escribe
+    # por bloques de tiempo (stream_dataset_to_csv) para no expandir el cubo
+    # completo a DataFrame de una sola vez (pico de memoria → OOM en CI).
+    stream_dataset_to_csv(
+        ds_regridded[[VARIABLE]],
+        ["analysed_sst_celsius"],
+        csv_path,
+        transform=lambda df: df.assign(analysed_sst_celsius=df[VARIABLE] - 273.15),
     )
-    df.to_csv(csv_path, index=False)
 
-    print_summary(df, "analysed_sst_celsius", "°C")
+    print_summary_da(ds_regridded[VARIABLE] - 273.15, "analysed_sst_celsius", "°C")
     return csv_path
 
 

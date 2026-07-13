@@ -27,9 +27,10 @@ from processing.utils.cmems_common import (
     LAT_MIN,
     LON_MAX,
     LON_MIN,
-    print_summary,
+    print_summary_da,
     read_credentials,
     regrid_to_target,
+    stream_dataset_to_csv,
 )
 from processing.utils.date_ranges import END_DATE as GLOBAL_END
 from processing.utils.date_ranges import START_DATE as GLOBAL_START
@@ -109,19 +110,19 @@ def regrid_and_export(nc_path: str, csv_path: str) -> str:
     # Reescribir el NetCDF ya regrillado para que SST y CHL compartan grilla
     ds_regridded.to_netcdf(nc_path)
 
-    print(f"Convirtiendo {nc_path} a CSV...")
-    df = ds_regridded[VARIABLE].to_dataframe().reset_index()
-
-    # CHL ya viene en mg/m³, no hay conversión de unidades; solo renombrar para claridad
-    df = df.rename(columns={VARIABLE: "chl_mg_m3"})
-
-    # Quedarse con las columnas pedidas y descartar tierra/nubes (NaN)
-    df = df[["time", "latitude", "longitude", "chl_mg_m3"]].dropna(
-        subset=["chl_mg_m3"]
+    print(f"Convirtiendo {nc_path} a CSV (streaming por bloques de tiempo)...")
+    # CHL ya viene en mg/m³, no hay conversión de unidades; sólo renombrar para
+    # claridad. El CSV se escribe por bloques de tiempo (stream_dataset_to_csv)
+    # para no expandir el cubo completo a DataFrame de una sola vez (pico de
+    # memoria → OOM en CI).
+    stream_dataset_to_csv(
+        ds_regridded[[VARIABLE]],
+        ["chl_mg_m3"],
+        csv_path,
+        transform=lambda df: df.rename(columns={VARIABLE: "chl_mg_m3"}),
     )
-    df.to_csv(csv_path, index=False)
 
-    print_summary(df, "chl_mg_m3", "mg/m³")
+    print_summary_da(ds_regridded[VARIABLE], "chl_mg_m3", "mg/m³")
     return csv_path
 
 
