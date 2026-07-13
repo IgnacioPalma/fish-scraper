@@ -54,6 +54,10 @@ OUTPUT_DIR = DATA_DIR / "cleaned"
 # Formato de fecha del export Sernapesca (dd/mm/aaaa HH:MM:SS).
 DATE_FORMAT = "%d/%m/%Y %H:%M:%S"
 
+# Filas por bloque al leer el consolidado (ver comentario en main): acota el
+# pico de RAM sin fragmentar tanto como para volver lenta la escritura.
+CHUNKSIZE = 2_000_000
+
 # Renombrado de columnas: nombre crudo Sernapesca → nombre estándar en inglés.
 RENAME = {
     "Name": "vessel_name",
@@ -90,19 +94,25 @@ def limpiar(df: pd.DataFrame) -> tuple[pd.DataFrame, dict[str, int]]:
     # Tipos numéricos. Algunos exports Sernapesca anexan sufijos al valor:
     # lat/lon con el símbolo de grado (p.ej. "-29.23520°") y la velocidad con
     # " kt" (p.ej. "0.00 kt"). Se quitan antes de convertir a número.
+    #
+    # dtype=float64 explícito: `pd.to_numeric` devuelve int64 si el bloque no
+    # tiene NaN ni decimales y float64 si los tiene, así que sin el cast el
+    # rumbo se escribiría como `355` en un chunk y `355.0` en otro (procesamos
+    # por bloques, ver main). Fijar float hace la salida determinista e idéntica
+    # a la de una lectura de una sola pasada.
     out["latitude"] = pd.to_numeric(
         out["latitude"].str.replace("°", "", regex=False).str.strip(),
         errors="coerce",
-    )
+    ).astype("float64")
     out["longitude"] = pd.to_numeric(
         out["longitude"].str.replace("°", "", regex=False).str.strip(),
         errors="coerce",
-    )
-    out["heading"] = pd.to_numeric(out["heading"], errors="coerce")
+    ).astype("float64")
+    out["heading"] = pd.to_numeric(out["heading"], errors="coerce").astype("float64")
     out["speed_kt"] = pd.to_numeric(
         out["speed_kt"].str.replace("kt", "", regex=False).str.strip(),
         errors="coerce",
-    )
+    ).astype("float64")
 
     # Fecha → ISO 8601; valores ilegibles quedan vacíos (NaT → "").
     dt = pd.to_datetime(out["location_datetime"], format=DATE_FORMAT, errors="coerce")
@@ -153,29 +163,52 @@ def main() -> None:
         f"  Bounding box: lat [{LAT_MIN}, {LAT_MAX}], lon [{LON_MIN}, {LON_MAX}]\n"
     )
 
-    df = pd.read_csv(input_csv, sep=";", dtype=str, encoding="utf-8")
-
-    faltantes = [c for c in RENAME if c not in df.columns]
-    if faltantes:
-        print(
-            f"ERROR: al CSV de entrada le faltan columnas esperadas: {faltantes}.\n"
-            "       ¿Cambió el esquema de consolidate_locations.py?",
-            file=sys.stderr,
-        )
-        sys.exit(1)
-
-    limpio, stats = limpiar(df)
-
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-    limpio.to_csv(output_csv, index=False, encoding="utf-8")
+
+    # Lectura por CHUNKS: el consolidado completo son decenas de millones de
+    # filas (varios GB) y cargarlo entero + las copias que genera `limpiar`
+    # (str.replace, to_numeric, to_datetime, filtrado) reventaba la memoria del
+    # runner de CI. La salida, en cambio, es chica: el recorte al bounding box
+    # de la región descarta la enorme mayoría de los pings (la flota reporta en
+    # toda la costa de Chile). Procesamos un bloque a la vez y anexamos las
+    # filas ya recortadas al CSV de salida; el pico de RAM queda acotado al
+    # tamaño de un chunk, independiente del total de filas.
+    n_entrada = 0
+    n_final = 0
+    stats_total = {"fecha_invalida": 0, "sin_coords": 0, "fuera_bbox": 0}
+
+    reader = pd.read_csv(
+        input_csv, sep=";", dtype=str, encoding="utf-8", chunksize=CHUNKSIZE
+    )
+    primero = True
+    with output_csv.open("w", encoding="utf-8", newline="") as fh:
+        for chunk in reader:
+            if primero:
+                faltantes = [c for c in RENAME if c not in chunk.columns]
+                if faltantes:
+                    print(
+                        f"ERROR: al CSV de entrada le faltan columnas esperadas: {faltantes}.\n"
+                        "       ¿Cambió el esquema de consolidate_locations.py?",
+                        file=sys.stderr,
+                    )
+                    sys.exit(1)
+
+            n_entrada += len(chunk)
+            limpio, stats = limpiar(chunk)
+            for k in stats_total:
+                stats_total[k] += stats[k]
+
+            limpio.to_csv(fh, index=False, header=primero)
+            n_final += len(limpio)
+            primero = False
 
     size_mb = output_csv.stat().st_size / (1024 * 1024)
     print(
-        f"Filas de entrada:                {len(df):,}\n"
-        f"Descartadas sin coordenadas:     {stats['sin_coords']:,}\n"
-        f"Descartadas fuera del bbox:      {stats['fuera_bbox']:,}\n"
-        f"Fechas ilegibles (campo vacío):  {stats['fecha_invalida']:,}\n"
-        f"Filas finales:                   {len(limpio):,}\n"
+        f"Filas de entrada:                {n_entrada:,}\n"
+        f"Descartadas sin coordenadas:     {stats_total['sin_coords']:,}\n"
+        f"Descartadas fuera del bbox:      {stats_total['fuera_bbox']:,}\n"
+        f"Fechas ilegibles (campo vacío):  {stats_total['fecha_invalida']:,}\n"
+        f"Filas finales:                   {n_final:,}\n"
         f"Archivo escrito:                 {output_csv}\n"
         f"Tamaño:                          {size_mb:.1f} MB"
     )
