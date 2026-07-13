@@ -31,6 +31,15 @@ export AWS_ACCESS_KEY_ID="$R2_ACCESS_KEY_ID"
 export AWS_SECRET_ACCESS_KEY="$R2_SECRET_ACCESS_KEY"
 export AWS_DEFAULT_REGION="auto"
 
+# Alcance geográfico del proyecto (el mismo REGION que usa el código Python;
+# ver processing/utils/regions.py). Prefija TODAS las claves R2 con la región
+# para que distintos alcances no se pisen en el bucket: el crudo de Copernicus
+# viene recortado al bbox de la región, así que atacama y chile son datos
+# distintos que sin este prefijo colisionarían en la misma clave.
+# Se lee del entorno (en CI viene del workflow; local, del .env ya cargado arriba),
+# por defecto 'atacama'. Se normaliza a minúsculas como en active_region().
+R2_REGION="$(printf '%s' "${REGION:-atacama}" | tr '[:upper:]' '[:lower:]')"
+
 # Mapea un componente lógico a pares "prefijo_r2 dir_local" (uno por línea).
 # El "corpus crudo" (lo que reutiliza run_all --skip-scrape --skip-download) es
 # la unión de ifop + registry + vms + capture + copernicus. El componente
@@ -38,13 +47,13 @@ export AWS_DEFAULT_REGION="auto"
 # bitacora.csv), única entrada que no se scrapea ni descarga.
 r2_paths() {
   case "$1" in
-    ifop)       echo "raw/ifop/raw data/processing/ifop/raw" ;;
-    registry)   echo "raw/registry/raw data/processing/registry/raw"
-                echo "raw/registry/fishing_types data/processing/registry/fishing_types" ;;
-    vms)        echo "raw/locations/raw_daily data/processing/locations/raw_daily" ;;
-    capture)    echo "raw/capture/input data/processing/capture/input" ;;
-    copernicus) echo "raw/copernicus data/copernicus" ;;
-    output)     echo "output data/output" ;;
+    ifop)       echo "raw/${R2_REGION}/ifop/raw data/processing/ifop/raw" ;;
+    registry)   echo "raw/${R2_REGION}/registry/raw data/processing/registry/raw"
+                echo "raw/${R2_REGION}/registry/fishing_types data/processing/registry/fishing_types" ;;
+    vms)        echo "raw/${R2_REGION}/locations/raw_daily data/processing/locations/raw_daily" ;;
+    capture)    echo "raw/${R2_REGION}/capture/input data/processing/capture/input" ;;
+    copernicus) echo "raw/${R2_REGION}/copernicus data/copernicus" ;;
+    output)     echo "output/${R2_REGION} data/output" ;;
     raw)        r2_paths ifop; r2_paths registry; r2_paths vms; r2_paths capture; r2_paths copernicus ;;
     *) echo "componente desconocido: $1 (usa: ifop|registry|vms|capture|copernicus|raw|output)" >&2; return 1 ;;
   esac

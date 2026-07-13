@@ -14,6 +14,10 @@ concurrency:
   cancel-in-progress: true
 
 env:
+  # Alcance geográfico del pipeline: variable de repo `REGION` (Settings → Variables),
+  # por defecto `atacama`. Sin esto, active_region() no ve el REGION del .env local
+  # (gitignorado, no llega a CI) y siempre resuelve a atacama.
+  REGION: ${{ vars.REGION || 'atacama' }}
   R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
   R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
   R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
@@ -38,7 +42,7 @@ jobs:
       - name: Publicar productos como artifact
         uses: actions/upload-artifact@v4
         with:
-          name: zarpes-atacama-output
+          name: zarpes-${{ env.REGION }}-output
           path: data/output/
           if-no-files-found: error
       - name: Resumen
@@ -47,11 +51,13 @@ jobs:
           {
             echo "## Pipeline histórico"
             echo ""
-            if [ -f data/output/zarpes_atacama_haul_env.csv ]; then
-              n=$(($(wc -l < data/output/zarpes_atacama_haul_env.csv) - 1))
-              echo "- Dataset de modelado: **${n} filas** en \`data/output/zarpes_atacama_haul_env.csv\`"
-              echo "- Publicado en R2: \`s3://${R2_BUCKET}/output/\`"
+            out="data/output/zarpes_${REGION}_haul_env.csv"
+            if [ -f "$out" ]; then
+              n=$(($(wc -l < "$out") - 1))
+              echo "- Región (\`REGION\`): \`${REGION}\`"
+              echo "- Dataset de modelado: **${n} filas** en \`${out}\`"
+              echo "- Publicado en R2: \`s3://${R2_BUCKET}/output/${REGION}/\`"
             else
-              echo "- ⚠️ No se generó \`zarpes_atacama_haul_env.csv\`."
+              echo "- ⚠️ No se generó \`${out}\`."
             fi
           } >> "$GITHUB_STEP_SUMMARY"

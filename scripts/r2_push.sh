@@ -7,7 +7,9 @@
 #   scripts/r2_push.sh raw             # todo el corpus crudo
 #   scripts/r2_push.sh raw output      # crudo + productos
 #
-# Componentes: ifop | registry | vms | copernicus | raw | output
+# Componentes: ifop | registry | vms | capture | copernicus | raw | output
+# Las claves R2 van prefijadas por región (REGION, ver r2_common.sh): p.ej.
+# raw/chile/copernicus. El árbol local data/ NO cambia con la región.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 # shellcheck disable=SC1091

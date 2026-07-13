@@ -129,7 +129,8 @@ def main() -> None:
     with _argv(*(["--skip-download"] if args.skip_download else [])):
         copernicus_pipeline.main()
 
-    _seccion("Pipeline completo · dataset de modelado en data/output/zarpes_atacama_haul_env.csv")
+    from processing.utils.regions import active_region
+    _seccion(f"Pipeline completo · dataset de modelado en data/output/zarpes_{active_region().key}_haul_env.csv")
 
 
 if __name__ == "__main__":

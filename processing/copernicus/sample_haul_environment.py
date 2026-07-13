@@ -62,13 +62,17 @@ import numpy as np
 import pandas as pd
 import xarray as xr
 
+from processing.utils.regions import active_region
+
 OUTPUT_DIR = Path(__file__).resolve().parents[2] / "data" / "output"
 COPERNICUS_DIR = Path(__file__).resolve().parents[2] / "data" / "copernicus"
 HAUL_CSV = (
     Path(__file__).resolve().parents[2]
     / "data" / "processing" / "locations" / "single_haul" / "zarpes_atacama_haul_single.csv"
 )
-OUTPUT_CSV = OUTPUT_DIR / "zarpes_atacama_haul_env.csv"
+# El producto final lleva el slug de la región activa (REGION), p.ej.
+# zarpes_chile_haul_env.csv, para que distintas regiones no se pisen en data/output/.
+OUTPUT_CSV = OUTPUT_DIR / f"zarpes_{active_region().key}_haul_env.csv"
 
 EARTH_RADIUS_KM = 6371.0
 # Radio máximo para reemplazar una celda en tierra por la celda de mar más cercana.

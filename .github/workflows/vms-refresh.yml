@@ -28,6 +28,10 @@ concurrency:
   cancel-in-progress: false
 
 env:
+  # Alcance geográfico de la descarga VMS: variable de repo `REGION` (Settings → Variables),
+  # por defecto `atacama`. Sin esto, active_region() no ve el REGION del .env local
+  # (gitignorado, no llega a CI) y siempre resuelve a atacama.
+  REGION: ${{ vars.REGION || 'atacama' }}
   R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
   R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
   R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}

@@ -7,7 +7,9 @@
 #   scripts/r2_pull.sh ifop registry   # varios componentes
 #   scripts/r2_pull.sh output          # los productos finales
 #
-# Componentes: ifop | registry | vms | copernicus | raw | output
+# Componentes: ifop | registry | vms | capture | copernicus | raw | output
+# Las claves R2 van prefijadas por región (REGION, ver r2_common.sh): p.ej.
+# raw/chile/copernicus. El árbol local data/ NO cambia con la región.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 # shellcheck disable=SC1091
