@@ -68,6 +68,19 @@ tope de 6 h. `vms-refresh` lo resuelve sin intervención humana:
   complete}`) y lo sube a R2 con los días. Es la fuente única para saber "N/total"
   (p. ej. 559/2131) sin contar archivos. En el log de cada tanda también aparece
   el contador `[559/2131] 2023-05-12 …`.
+- **Caché de fechas faltantes** (`raw_daily/_vms_missing.txt`): un día sin dato en
+  el servidor devuelve 404 y NO deja archivo; en el formato antiguo confirmarlo
+  cuesta ~90 s (barrido `SS=00..59`). Sin caché, cada tanda re-intentaba las mismas
+  fechas faltantes y no avanzaba (bucle infinito). Ahora se registran y se saltan
+  al instante en las tandas siguientes. Un 404 es definitivo (los errores
+  transitorios abortan, no se cachean); el día de hoy nunca se cachea.
+- **Cursor de reanudación** (`raw_daily/_vms_cursor.json`): guarda la frontera
+  contigua de lo ya resuelto (descargado o faltante-cacheado), así cada tanda
+  arranca en la frontera en vez de re-escanear desde el inicio (evita ~2000 líneas
+  de log por tanda y hace la reanudación instantánea). La frontera solo avanza por
+  fechas resueltas y contiguas —nunca salta una pendiente (p. ej. hoy sin
+  publicar)—, y si cambia el rango global (`START`/`END`) el cursor se invalida y
+  se re-escanea todo (seguro).
 - **Auto-continuación**: si el job agota su presupuesto total (`TOTAL_BUDGET_MIN`,
   < `timeout-minutes`) sin terminar, se re-despacha solo con
   `gh workflow run vms-refresh.yml` (permitido con el `GITHUB_TOKEN` por defecto
