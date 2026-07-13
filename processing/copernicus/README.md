@@ -39,15 +39,20 @@ uv run python -m processing.copernicus.sample_haul_environment  # → data/outpu
 
 | # | Módulo | Salida | Variable(s) que aporta al lance |
 |---|---|---|---|
-| 1 | `download_sst` | `data/copernicus/sst_atacama_<rango>.{nc,csv}` | `sst_c` |
-| 2 | `download_chl` | `data/copernicus/chl_atacama_<rango>.{nc,csv}` | `chl_mg_m3` |
+| 1 | `download_sst` | `data/copernicus/sst_atacama_<rango>.{nc,csv}` | `sst_c`, `sst_front_c_per_km` (\|∇SST\|) |
+| 2 | `download_chl` | `data/copernicus/chl_atacama_<rango>.{nc,csv}` | `chl_mg_m3`, `chl_front_mg_m3_per_km` (\|∇CHL\|) |
 | 3 | `download_phy` | `data/copernicus/phy_atacama_<rango>.{nc,csv}` | `mld_m`, `sss_psu` |
 | 4 | `download_bgc` | `data/copernicus/bgc_atacama_<rango>.{nc,csv}` | `o2_min_mmol_m3` |
-| 5 | `sample_haul_environment` | `data/output/zarpes_atacama_haul_env.csv` | (producto final) |
+| 5 | `download_wind` | `data/copernicus/wind_atacama_<rango>.{nc,csv}` | `wind_stress_pa` + componentes (τ bulk) |
+| 6 | `sample_haul_environment` | `data/output/zarpes_atacama_haul_env.csv` | (producto final; + `moon_illumination`, derivada de la fecha) |
 
-> Las capas `download_sla` (altimetría) y `download_wind` (viento) también viven en
-> este paquete pero **no** alimentan el producto de lances; se descargan por separado
-> si se necesitan como covariables adicionales.
+> Los **frentes** (`sst_front_*`, `chl_front_*`) son la magnitud del gradiente horizontal
+> \|∇campo\| derivada de las grillas SST/CHL en el muestreo (no se descargan aparte); el
+> **esfuerzo del viento** sale de la capa `download_wind` (fórmula bulk τ = ρ·C_d·\|U\|·U); y
+> la **fase lunar** (`moon_illumination`) se deriva de la fecha del lance sin descargar nada.
+>
+> La capa `download_sla` (altimetría) también vive en este paquete pero **no** alimenta el
+> producto de lances; se descarga por separado si se necesita.
 
 ### 1–4. Descargadores
 

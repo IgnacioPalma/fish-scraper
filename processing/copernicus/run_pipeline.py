@@ -7,13 +7,14 @@ en orden:
   2. download_chl   → data/copernicus/chl_atacama_<rango>.{nc,csv}
   3. download_phy   → data/copernicus/phy_atacama_<rango>.{nc,csv}  (mlotst, so_0m, …)
   4. download_bgc   → data/copernicus/bgc_atacama_<rango>.{nc,csv}  (o2_min_0_200m, nppv)
-  5. sample_haul_environment → data/output/zarpes_atacama_haul_env.csv
+  5. download_wind  → data/copernicus/wind_atacama_<rango>.{nc,csv} (east/northward_wind)
+  6. sample_haul_environment → data/output/zarpes_atacama_haul_env.csv
 
 Cada etapa es el `main()` del módulo correspondiente; si una falla aborta con
 código distinto de cero (las etapas ya imprimen una pista en stderr), el pipeline
 se detiene ahí.
 
-La etapa 5 (muestreo) requiere que el pipeline de localizaciones ya haya generado
+La etapa 6 (muestreo) requiere que el pipeline de localizaciones ya haya generado
 `data/processing/locations/single_haul/zarpes_atacama_haul_single.csv` (zarpes de
 un único lance confiable).
 
@@ -21,8 +22,8 @@ Las descargas necesitan credenciales Copernicus en `.env` (COPERNICUS_USERNAME /
 COPERNICUS_PASSWORD) y conexión a internet; son lentas. Con `--skip-download` se
 reutilizan las grillas ya descargadas y el pipeline arranca desde el muestreo.
 
-Nota: las capas `sla` y `wind` también viven en `processing.copernicus` pero no
-alimentan el producto de lances; se descargan por separado si se necesitan.
+Nota: la capa `sla` también vive en `processing.copernicus` pero no alimenta el
+producto de lances; se descarga por separado si se necesita.
 
 Uso:
     uv run python -m processing.copernicus.run_pipeline
@@ -54,27 +55,31 @@ def main() -> None:
     if args.skip_download:
         print("(--skip-download: se omiten las descargas; se reutilizan las grillas existentes)")
     else:
-        _etapa("1/5 · Descarga SST (temperatura superficial)")
+        _etapa("1/6 · Descarga SST (temperatura superficial)")
         from processing.copernicus import download_sst
         download_sst.main()
 
-        _etapa("2/5 · Descarga CHL (clorofila)")
+        _etapa("2/6 · Descarga CHL (clorofila)")
         from processing.copernicus import download_chl
         download_chl.main()
 
-        _etapa("3/5 · Descarga PHY (MLD + salinidad superficial)")
+        _etapa("3/6 · Descarga PHY (MLD + salinidad superficial)")
         from processing.copernicus import download_phy
         download_phy.main()
 
-        _etapa("4/5 · Descarga BGC (O₂ mínimo 0–200 m + nppv)")
+        _etapa("4/6 · Descarga BGC (O₂ mínimo 0–200 m + nppv)")
         from processing.copernicus import download_bgc
         download_bgc.main()
+
+        _etapa("5/6 · Descarga WIND (viento a 10 m → esfuerzo del viento)")
+        from processing.copernicus import download_wind
+        download_wind.main()
 
     if args.download_only:
         _etapa("Descarga Copernicus completa (--download-only: se omite el muestreo)")
         return
 
-    _etapa("5/5 · Muestreo de capas en cada lance")
+    _etapa("6/6 · Muestreo de capas en cada lance")
     from processing.copernicus import sample_haul_environment
     sample_haul_environment.main()
 
