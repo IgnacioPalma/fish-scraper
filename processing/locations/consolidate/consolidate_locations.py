@@ -11,12 +11,16 @@ solapan en los bordes —el archivo del día N suele contener pings cuya
 repetidas; este script las elimina manteniendo la primera aparición.
 
 Esquema esperado: los 7 campos en inglés con BOM UTF-8. En la práctica,
-algunos días aislados Sernapesca subió un export distinto (columnas en
-español, otra cantidad de columnas, coordenadas en grados-minutos-segundos,
-encoding latin-1, etc.). Esos archivos se detectan por encoding o columnas
-fuera de REQUIRED_COLS y se saltan con un aviso en stderr — el día queda
-sin cubrir en el CSV consolidado, pero el archivo diario crudo sigue
-disponible en disco si en el futuro se decide normalizarlo a mano.
+Sernapesca cambió los encabezados en bloques enteros de días: un export
+alternativo pero SEMÁNTICAMENTE IDÉNTICO usa `Mobile`/`Radio Call
+Sign`/`Date`/`Speed` en vez de `Name`/`Radio Call Sign (RC)`/`Location
+date`/`Speed (kt)`, y otro adjunta columnas extra al final (zonas UDA,
+`Source`/`Modification date`). Esos alias se normalizan a los nombres
+canónicos y las columnas extra se recortan, de modo que todos esos días se
+consolidan. Sólo se saltan (con aviso en stderr) los archivos que ni siquiera
+tras normalizar contienen las 7 columnas requeridas o que no son UTF-8
+(encoding latin-1, esquema realmente distinto, etc.); esos días quedan sin
+cubrir, pero el archivo diario crudo sigue disponible en disco.
 
 Salida: data/processing/locations/raw_consolidated/locations_flota_artesanal_<rango>.csv,
 con el mismo separador (`;`) y encoding UTF-8.
@@ -51,6 +55,41 @@ REQUIRED_COLS = [
     "Heading",
     "Speed (kt)",
 ]
+
+# Encabezados alternativos que Sernapesca usó en bloques enteros de días,
+# equivalentes columna a columna a REQUIRED_COLS. Se renombran a los nombres
+# canónicos antes de validar el esquema. Incluye el export en inglés
+# (`Mobile`/`Date`/...) y el export en español (`Nombre`/`Fecha de posición`/...).
+# Nota: el `Speed` alternativo trae el número pelado (sin sufijo " kt"); el
+# limpiador downstream quita ese sufijo con str.replace, que es un no-op si no
+# está, así que ambos formatos son compatibles.
+HEADER_ALIASES = {
+    # export alternativo en inglés
+    "Mobile": "Name",
+    "Radio Call Sign": "Radio Call Sign (RC)",
+    "Date": "Location date",
+    "Speed": "Speed (kt)",
+    # export en español
+    "Nombre": "Name",
+    "Señal de llamada": "Radio Call Sign (RC)",
+    "Fecha de posición": "Location date",
+    "Latitud": "Latitude",
+    "Longitud": "Longitude",
+    "Rumbo": "Heading",
+    "Velocidad (kt)": "Speed (kt)",
+}
+
+
+def _normalize_schema(df: pd.DataFrame) -> pd.DataFrame | None:
+    """Renombra alias conocidos a los nombres canónicos y, si tras eso el
+    DataFrame contiene las 7 columnas requeridas, lo recorta y reordena a
+    REQUIRED_COLS (descartando columnas extra como las zonas UDA o
+    Source/Modification date). Devuelve None si falta alguna columna requerida.
+    """
+    renamed = df.rename(columns=HEADER_ALIASES)
+    if set(REQUIRED_COLS).issubset(renamed.columns):
+        return renamed[REQUIRED_COLS]
+    return None
 
 
 def main() -> None:
@@ -91,13 +130,14 @@ def main() -> None:
             skipped.append((path.name, f"no es UTF-8 ({exc.reason})"))
             continue
 
-        if list(df.columns) != REQUIRED_COLS:
+        normalized = _normalize_schema(df)
+        if normalized is None:
             skipped.append(
                 (path.name, f"columnas no estándar: {list(df.columns)}")
             )
             continue
 
-        dfs.append(df)
+        dfs.append(normalized)
 
     if skipped:
         print(
