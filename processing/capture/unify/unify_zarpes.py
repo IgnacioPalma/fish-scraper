@@ -47,7 +47,7 @@ VESSELS_CSV = DATA_DIR / "processing" / "ifop" / "vessels.csv"
 # Columnas de salida (orden final del dataset de zarpes con captura).
 OUTPUT_COLS = [
     "zarpe_id", "vessel_code", "vessel_name", "cod_barco",
-    "landing_datetime", "landing_port", "jack_mackerel_kg", "principal_catch",
+    "landing_datetime", "landing_port", "jack_mackerel_tons", "principal_catch",
 ]
 
 
@@ -70,7 +70,7 @@ def construir(capture: pd.DataFrame, vessels: pd.DataFrame) -> pd.DataFrame:
         "cod_barco":        c["COD_BARCO"],
         "landing_datetime": c["LANDING_DATETIME"],
         "landing_port":     c["PORT"],
-        "jack_mackerel_kg": c["JACK_MACKEREL"],
+        "jack_mackerel_tons": c["JACK_MACKEREL"],
         "principal_catch":  c["PRINCIPAL_CATCH"],
     })
     out = out.merge(vn, on="vessel_code", how="left")

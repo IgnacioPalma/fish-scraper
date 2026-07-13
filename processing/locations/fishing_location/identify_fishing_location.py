@@ -218,18 +218,18 @@ def identificar_pesca(df: pd.DataFrame, ports: list[dict],
                       captura: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame, dict]:
     """Etiqueta el comportamiento de cada ping y arma el resumen con la ubicación del lance.
 
-    `captura` es el dataset unificado de zarpes con captura; aporta `jack_mackerel_kg`
+    `captura` es el dataset unificado de zarpes con captura; aporta `jack_mackerel_tons`
     por `zarpe_id` (la captura de jurel del zarpe), que se anexa al resumen.
     """
-    captura = captura[["zarpe_id", "jack_mackerel_kg", "principal_catch"]].copy()
+    captura = captura[["zarpe_id", "jack_mackerel_tons", "principal_catch"]].copy()
     captura["zarpe_id"] = pd.to_numeric(captura["zarpe_id"], errors="coerce").astype("Int64")
-    captura["jack_mackerel_kg"] = pd.to_numeric(captura["jack_mackerel_kg"], errors="coerce")
+    captura["jack_mackerel_tons"] = pd.to_numeric(captura["jack_mackerel_tons"], errors="coerce")
     captura["principal_catch"] = (
         captura["principal_catch"].astype(str).str.strip().str.lower()
         .map({"true": True, "false": False})
     )
     cap = captura.dropna(subset=["zarpe_id"]).set_index("zarpe_id")
-    kg_por_zarpe = cap["jack_mackerel_kg"]
+    tons_por_zarpe = cap["jack_mackerel_tons"]
     principal_por_zarpe = cap["principal_catch"]
 
     df = df.copy()
@@ -260,7 +260,7 @@ def identificar_pesca(df: pd.DataFrame, ports: list[dict],
     n_lances_total = 0
     for zid, sub in df.groupby("zarpe_id", sort=True):
         meta = sub.iloc[0]
-        kg = kg_por_zarpe.get(zid, pd.NA)
+        tons = tons_por_zarpe.get(zid, pd.NA)
         principal = principal_por_zarpe.get(zid, pd.NA)
         cand = sub[sub["_cand"]]
         bouts = _bouts_candidatos(cand)  # ordenados: lances circulares primero
@@ -268,7 +268,7 @@ def identificar_pesca(df: pd.DataFrame, ports: list[dict],
         if not bouts:
             filas_resumen.append({
                 "zarpe_id": zid, "rpa": meta["rpa"], "vessel_code": meta["vessel_code"],
-                "vessel_name": meta["vessel_name"], "jack_mackerel_kg": kg,
+                "vessel_name": meta["vessel_name"], "jack_mackerel_tons": tons,
                 "principal_catch": principal, "n_hauls": 0,
                 "haul_confidence": "sin_pesca",
                 "haul_lat": pd.NA, "haul_lon": pd.NA, "haul_start": pd.NA, "haul_end": pd.NA,
@@ -301,7 +301,7 @@ def identificar_pesca(df: pd.DataFrame, ports: list[dict],
         dist_km, puerto = _dist_min_puerto(lat, lon, ports)
         filas_resumen.append({
             "zarpe_id": zid, "rpa": meta["rpa"], "vessel_code": meta["vessel_code"],
-            "vessel_name": meta["vessel_name"], "jack_mackerel_kg": kg,
+            "vessel_name": meta["vessel_name"], "jack_mackerel_tons": tons,
             "principal_catch": principal, "n_hauls": len(sets),
             "haul_confidence": confianza,
             "haul_lat": round(lat, 5), "haul_lon": round(lon, 5),
@@ -327,7 +327,7 @@ def identificar_pesca(df: pd.DataFrame, ports: list[dict],
         "dist_port_km", "nearest_port", "turn_deg", "behavior", "is_haul", "haul_index",
     ]
     resumen_cols = [
-        "zarpe_id", "vessel_code", "vessel_name", "jack_mackerel_kg", "principal_catch",
+        "zarpe_id", "vessel_code", "vessel_name", "jack_mackerel_tons", "principal_catch",
         "n_hauls", "haul_confidence", "haul_lat", "haul_lon", "haul_start", "haul_end",
         "haul_duration_h", "haul_n_pings", "haul_mean_speed_kt", "haul_net_turn_deg",
         "haul_compactness", "haul_dist_port_km", "nearest_port",

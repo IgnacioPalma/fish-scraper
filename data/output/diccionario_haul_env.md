@@ -11,7 +11,7 @@ del lance + columnas de auditoría.
 | `zarpe_id` | — | Identificador único del zarpe (viaje de pesca). |
 | `vessel_code` | — | Código interno IFOP de la embarcación. |
 | `vessel_name` | — | Nombre de la embarcación. |
-| `jack_mackerel_kg` | kg | Captura de jurel del zarpe (variable respuesta del modelo). |
+| `jack_mackerel_tons` | tons | Captura de jurel del zarpe (variable respuesta del modelo). |
 | `principal_catch` | booleano | `True` si el jurel fue la especie con mayor captura del viaje. |
 | `n_hauls` | — | Nº de lances confiables del viaje. En este dataset siempre `1` (filtro de un único lance). |
 | `haul_confidence` | — | Confianza de la ubicación. En este dataset siempre `alta` (anillo circular del cerco). |
