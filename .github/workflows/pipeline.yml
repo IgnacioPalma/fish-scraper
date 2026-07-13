@@ -3,7 +3,7 @@ name: pipeline
 # Procesa el corpus crudo cacheado en R2 y publica el dataset de modelado.
 # NO scrapea ni descarga: baja raw/ desde R2, corre run_all con
 # --skip-scrape --skip-download (solo cómputo, sin navegador) y sube output/.
-# Requiere que refresh-raw haya poblado R2 antes.
+# Requiere que refresh-ifop, refresh-copernicus y vms-refresh hayan poblado R2 antes.
 on:
   workflow_dispatch:
   schedule:

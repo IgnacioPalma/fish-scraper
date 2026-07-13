@@ -1,0 +1,52 @@
+name: refresh-copernicus
+
+# Descarga las grillas Copernicus (SST/CHL/PHY/BGC) en la nube y las cachea en R2.
+# Se dispara a mano; el corpus histórico es estático, así que se corre rara vez.
+# Baja las grillas existentes desde R2 antes de descargar (skip-if-exists) y vuelve
+# a subirlas al terminar.
+#
+# IFOP + registro y VMS tienen sus propios workflows: refresh-ifop.yml y
+# vms-refresh.yml. Los tres escriben claves R2 disjuntas, así que pueden correr en
+# paralelo.
+on:
+  workflow_dispatch:
+
+# Evita dos refrescos Copernicus simultáneos pisándose sobre R2.
+concurrency:
+  group: refresh-copernicus
+  cancel-in-progress: false
+
+env:
+  # Alcance geográfico de la descarga: variable de repo `REGION` (Settings → Variables),
+  # por defecto `atacama`. Las grillas se recortan al bbox de la región, así que sin
+  # esto active_region() siempre resuelve a atacama (el .env local no llega a CI).
+  REGION: ${{ vars.REGION || 'atacama' }}
+  R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+  R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+  R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+  R2_BUCKET: ${{ secrets.R2_BUCKET }}
+
+jobs:
+  copernicus:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        layer: [sst, chl, phy, bgc]
+    env:
+      COPERNICUS_USERNAME: ${{ secrets.COPERNICUS_USERNAME }}
+      COPERNICUS_PASSWORD: ${{ secrets.COPERNICUS_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+      - run: uv sync
+      - name: Traer grillas Copernicus existentes (skip-if-exists)
+        run: scripts/r2_pull.sh copernicus
+      - name: Descargar capa ${{ matrix.layer }}
+        run: uv run python -m processing.copernicus.download_${{ matrix.layer }}
+      - name: Subir grillas Copernicus a R2
+        if: always()
+        run: scripts/r2_push.sh copernicus

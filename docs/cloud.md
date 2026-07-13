@@ -8,51 +8,61 @@ cacheado.
 
 ## Idea general
 
-Hay **dos workflows** con roles separados:
+Hay **cuatro workflows** con roles separados:
 
 | Workflow | Disparo | Qué hace |
 | --- | --- | --- |
-| [`refresh-raw`](../.github/workflows/refresh-raw.yml) | manual (`workflow_dispatch`) | Corre los scrapers/descargadores IFOP, registro y Copernicus en la nube y cachea su parte del **corpus crudo** en R2. Se corre rara vez. |
+| [`refresh-ifop`](../.github/workflows/refresh-ifop.yml) | manual (`workflow_dispatch`) | Corre los scrapers IFOP + registro en la nube y cachea su parte del **corpus crudo** en R2. Se corre rara vez. |
+| [`refresh-copernicus`](../.github/workflows/refresh-copernicus.yml) | manual (`workflow_dispatch`) | Descarga las grillas Copernicus (SST/CHL/PHY/BGC) a R2. Se corre rara vez. |
 | [`vms-refresh`](../.github/workflows/vms-refresh.yml) | manual; **se re-despacha sola** | Descarga los reportes VMS diarios a R2 por tandas y se re-dispara hasta terminar (ver abajo). |
 | [`pipeline`](../.github/workflows/pipeline.yml) | manual + cron semanal | Baja el corpus crudo de R2 y corre `run_all --skip-scrape --skip-download` (solo cómputo). Publica el **dataset de modelado**. |
 
 La separación existe por el tope de 6 h por job de GitHub Actions: el scraper
-IFOP tarda ~2–2.5 h, así que se aísla en `refresh-raw` (con checkpoint, ver
-abajo), y la descarga VMS —la más larga— vive en `vms-refresh` con bucle de
-re-despacho; ninguna se repite en cada corrida de `pipeline`.
+IFOP tarda ~2–2.5 h, así que se aísla en `refresh-ifop` (con checkpoint, ver
+abajo); Copernicus vive en `refresh-copernicus`; y la descarga VMS —la más larga—
+vive en `vms-refresh` con bucle de re-despacho. Los tres escriben claves R2
+disjuntas, así que corren en paralelo, y ninguno se repite en cada corrida de
+`pipeline`.
 
 ## Distribución en R2 (`s3://<bucket>/`)
 
-El "corpus crudo" es exactamente lo que reutiliza `--skip-scrape --skip-download`:
+El "corpus crudo" es exactamente lo que reutiliza `--skip-scrape --skip-download`.
+Todas las claves van prefijadas por región (`<region>` = `REGION`, p.ej. `atacama`,
+`chile`), así que distintos alcances no se pisan en el bucket:
 
 ```
-raw/
+raw/<region>/
   ifop/raw/                    ← scraper IFOP (viajes_observadores.csv + checkpoint)
   registry/raw/                ← scraper registro nacional (by_region/)
   registry/fishing_types/      ← scraper RPA de artes (raw_scrape.csv)
   locations/raw_daily/         ← descarga VMS diaria (~1025 CSV, 1.4 GB)
+  capture/input/               ← bitácora IFOP manual (única entrada no scrapeada)
   copernicus/                  ← grillas Copernicus (.nc + .csv, ~1 GB)
-output/
-  zarpes_atacama_haul_env.csv  ← producto final (+ diccionario)
+output/<region>/
+  zarpes_<region>_haul_env.csv ← producto final (+ diccionario)
 ```
 
 El mapeo componente lógico ↔ prefijo R2 ↔ carpeta local vive en un solo lugar:
-[`scripts/r2_common.sh`](../scripts/r2_common.sh) (`r2_paths`).
+[`scripts/r2_common.sh`](../scripts/r2_common.sh) (`r2_paths`), que también deriva
+el prefijo de región desde `REGION`.
 
-## `refresh-raw`: jobs
+## `refresh-ifop`: jobs
 
 Cada job baja su porción de `raw/` desde R2 **antes** de scrapear (para que el
-skip-if-exists funcione) y la vuelve a subir al terminar. Escriben claves R2
-disjuntas, así que corren en paralelo salvo la dependencia indicada.
+skip-if-exists funcione) y la vuelve a subir al terminar.
 
-1. **`ifop`** — scrapea el SIEM (~2.5 h, reanudable por checkpoint) → `raw/ifop/`.
-2. **`copernicus`** *(matriz sst/chl/phy/bgc, paralelo)* — descarga cada grilla → `raw/copernicus/`.
-3. **`registry`** *(depende de `ifop`)* — el scrape por RPA necesita `vessels.csv`
+1. **`ifop`** — scrapea el SIEM (~2.5 h, reanudable por checkpoint) → `raw/<region>/ifop/`.
+2. **`registry`** *(depende de `ifop`)* — el scrape por RPA necesita `vessels.csv`
    de IFOP: baja el crudo de IFOP, corre `ifop.run_pipeline --skip-scrape` para
    derivar `vessels.csv`, luego `registry.run_pipeline` (nacional + fishing_types)
-   → `raw/registry/`.
+   → `raw/<region>/registry/`.
 
-La descarga VMS **no** está en `refresh-raw`: corre en `vms-refresh` (abajo).
+## `refresh-copernicus`: jobs
+
+1. **`copernicus`** *(matriz sst/chl/phy/bgc, paralelo)* — baja las grillas
+   existentes (skip-if-exists) y descarga cada capa → `raw/<region>/copernicus/`.
+
+La descarga VMS **no** está en estos workflows: corre en `vms-refresh` (abajo).
 
 ## `vms-refresh`: descarga VMS en bucle
 
@@ -135,14 +145,16 @@ scripts/r2_push.sh output          # sube los productos finales
 scripts/r2_push.sh raw output      # sube crudo + productos
 ```
 
-Componentes válidos: `ifop | registry | vms | copernicus | raw | output`.
+Componentes válidos: `ifop | registry | vms | capture | copernicus | raw | output`.
 
 ## Primer arranque
 
-1. Crear el bucket R2 y un token de API; cargar los secrets en GitHub.
-2. Disparar `refresh-raw` a mano (IFOP + registro + Copernicus; primera corrida
-   ~3 h de reloj; siguientes: casi instantáneas por skip-if-exists).
+1. Crear el bucket R2 y un token de API; cargar los secrets en GitHub. Fijar la
+   variable de repo `REGION` (Settings → Variables) si el alcance no es `atacama`.
+2. Disparar `refresh-ifop` y `refresh-copernicus` a mano (pueden correr en
+   paralelo; primera corrida ~3 h de reloj para IFOP; siguientes: casi
+   instantáneas por skip-if-exists).
 3. Disparar `vms-refresh` a mano (se re-despacha sola hasta bajar todo el VMS).
-4. Disparar `pipeline` (o esperar el cron), una vez que `refresh-raw` y
-   `vms-refresh` completaron: produce y publica `zarpes_atacama_haul_env.csv` en
+4. Disparar `pipeline` (o esperar el cron), una vez que los refrescos y
+   `vms-refresh` completaron: produce y publica `zarpes_<region>_haul_env.csv` en
    R2 y como artifact.

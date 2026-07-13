@@ -1,19 +1,22 @@
-name: refresh-raw
+name: refresh-ifop
 
-# Corre los scrapers/descargadores en la nube y cachea el corpus crudo en R2.
-# Se dispara a mano; el corpus histórico es estático, así que se corre rara vez.
-# Cada job baja su porción de raw/ desde R2 antes de scrapear (skip-if-exists) y
-# vuelve a subirla al terminar; los jobs escriben claves R2 disjuntas.
+# Corre los scrapers IFOP + registro en la nube y cachea su porción del corpus
+# crudo en R2. Se dispara a mano; el corpus histórico es estático, así que se
+# corre rara vez. Cada job baja su porción de raw/ desde R2 antes de scrapear
+# (reanuda por checkpoint) y vuelve a subirla al terminar.
 #
-# NOTA: la descarga VMS NO está acá. Es la más larga y puede no caber en una
-# corrida, así que vive en su propio workflow con bucle de re-despacho:
-# .github/workflows/vms-refresh.yml (dispararlo por separado).
+# El registro va acá (no en su propio workflow) porque depende de IFOP: el scrape
+# por RPA de artes (fishing_types) necesita vessels.csv, que se deriva del crudo IFOP.
+#
+# Copernicus y VMS tienen sus propios workflows: refresh-copernicus.yml y
+# vms-refresh.yml. Los tres escriben claves R2 disjuntas, así que pueden correr en
+# paralelo.
 on:
   workflow_dispatch:
 
-# Evita dos refrescos simultáneos pisándose sobre R2.
+# Evita dos refrescos IFOP simultáneos pisándose sobre R2.
 concurrency:
-  group: refresh-raw
+  group: refresh-ifop
   cancel-in-progress: false
 
 env:
@@ -44,30 +47,6 @@ jobs:
       - name: Subir IFOP crudo a R2
         if: always()  # sube el checkpoint parcial aunque el job se corte
         run: scripts/r2_push.sh ifop
-
-  copernicus:
-    runs-on: ubuntu-latest
-    timeout-minutes: 120
-    strategy:
-      fail-fast: false
-      matrix:
-        layer: [sst, chl, phy, bgc]
-    env:
-      COPERNICUS_USERNAME: ${{ secrets.COPERNICUS_USERNAME }}
-      COPERNICUS_PASSWORD: ${{ secrets.COPERNICUS_PASSWORD }}
-    steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v5
-        with:
-          enable-cache: true
-      - run: uv sync
-      - name: Traer grillas Copernicus existentes (skip-if-exists)
-        run: scripts/r2_pull.sh copernicus
-      - name: Descargar capa ${{ matrix.layer }}
-        run: uv run python -m processing.copernicus.download_${{ matrix.layer }}
-      - name: Subir grillas Copernicus a R2
-        if: always()
-        run: scripts/r2_push.sh copernicus
 
   registry:
     runs-on: ubuntu-latest
