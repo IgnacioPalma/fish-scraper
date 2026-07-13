@@ -46,7 +46,21 @@ jobs:
       - name: Traer grillas Copernicus existentes (skip-if-exists)
         run: scripts/r2_pull.sh copernicus
       - name: Descargar capa ${{ matrix.layer }}
-        run: uv run python -m processing.copernicus.download_${{ matrix.layer }}
+        # Copernicus resuelve su catálogo contra CloudFerro (s3.waw3-1.cloudferro.com),
+        # que flaquea de forma intermitente y tumba la descarga con un ConnectTimeout
+        # antes de bajar dato alguno. Reintentamos con espera creciente; la descarga es
+        # idempotente (overwrite=True + skip-if-exists), así que reintentar es seguro.
+        run: |
+          for attempt in 1 2 3 4 5; do
+            echo "== Intento $attempt de descarga de ${{ matrix.layer }} =="
+            if uv run python -m processing.copernicus.download_${{ matrix.layer }}; then
+              exit 0
+            fi
+            echo "Descarga de ${{ matrix.layer }} falló (intento $attempt); reintentando en $((attempt * 60))s..." >&2
+            sleep $((attempt * 60))
+          done
+          echo "La descarga de ${{ matrix.layer }} falló tras 5 intentos." >&2
+          exit 1
       - name: Subir grillas Copernicus a R2
         if: always()
         run: scripts/r2_push.sh copernicus
