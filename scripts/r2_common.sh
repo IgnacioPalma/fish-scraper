@@ -33,17 +33,20 @@ export AWS_DEFAULT_REGION="auto"
 
 # Mapea un componente lógico a pares "prefijo_r2 dir_local" (uno por línea).
 # El "corpus crudo" (lo que reutiliza run_all --skip-scrape --skip-download) es
-# la unión de ifop + registry + vms + copernicus.
+# la unión de ifop + registry + vms + capture + copernicus. El componente
+# `capture` trae la bitácora IFOP manual (data/processing/capture/input/
+# bitacora.csv), única entrada que no se scrapea ni descarga.
 r2_paths() {
   case "$1" in
     ifop)       echo "raw/ifop/raw data/processing/ifop/raw" ;;
     registry)   echo "raw/registry/raw data/processing/registry/raw"
                 echo "raw/registry/fishing_types data/processing/registry/fishing_types" ;;
     vms)        echo "raw/locations/raw_daily data/processing/locations/raw_daily" ;;
+    capture)    echo "raw/capture/input data/processing/capture/input" ;;
     copernicus) echo "raw/copernicus data/copernicus" ;;
     output)     echo "output data/output" ;;
-    raw)        r2_paths ifop; r2_paths registry; r2_paths vms; r2_paths copernicus ;;
-    *) echo "componente desconocido: $1 (usa: ifop|registry|vms|copernicus|raw|output)" >&2; return 1 ;;
+    raw)        r2_paths ifop; r2_paths registry; r2_paths vms; r2_paths capture; r2_paths copernicus ;;
+    *) echo "componente desconocido: $1 (usa: ifop|registry|vms|capture|copernicus|raw|output)" >&2; return 1 ;;
   esac
 }
 
