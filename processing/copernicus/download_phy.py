@@ -35,9 +35,10 @@ from processing.utils.cmems_common import (
     LAT_MIN,
     LON_MAX,
     LON_MIN,
+    TIME_CHUNK,
     print_summary_da,
     read_credentials,
-    regrid_to_target,
+    regrid_and_write_netcdf,
     stream_dataset_to_csv,
 )
 from processing.utils.date_ranges import END_DATE as GLOBAL_END
@@ -144,46 +145,46 @@ def regrid_and_export(nc_path: str, csv_path: str) -> str:
     """Reduce las variables con dimensión de profundidad a campos 2-D,
     regrilla a la grilla destino común, reescribe el NetCDF y exporta
     el CSV con las columnas finales."""
-    print(f"Reduciendo profundidades y regrillando {nc_path}...")
+    print(f"Reduciendo profundidades y regrillando {nc_path} (streaming)...")
 
-    with xr.open_dataset(nc_path) as ds_raw:
-        ds = ds_raw.load()
+    # Abrir con chunks de dask (perezoso): la reducción de profundidad, el
+    # regrillado y el export corren por bloques de tiempo para no materializar
+    # el cubo completo (con bboxes grandes agota la RAM del runner de CI).
+    with xr.open_dataset(nc_path, chunks={"time": TIME_CHUNK}) as ds_raw:
+        # so y thetao tienen dimensión de profundidad; mlotst no.
+        ds = ds_raw.assign(
+            so_0m=_select_level(ds_raw["so"], DEPTH_SURFACE),
+            thetao_200m=_select_level(ds_raw["thetao"], DEPTH_DEEP),
+        ).drop_vars(["so", "thetao"])
 
-    # so y thetao tienen dimensión de profundidad; mlotst no.
-    ds = ds.assign(
-        so_0m=_select_level(ds["so"], DEPTH_SURFACE),
-        thetao_200m=_select_level(ds["thetao"], DEPTH_DEEP),
-    ).drop_vars(["so", "thetao"])
+        # Tras el sel/drop anterior ya no hay variables que usen la dim
+        # `depth`, pero la coord aún vive a nivel de Dataset con N niveles
+        # (los del subset 0–200 m). La eliminamos para que `to_netcdf` y
+        # `to_dataframe` queden limpios y la dim `depth` no aparezca en
+        # los archivos de salida.
+        if "depth" in ds.coords:
+            ds = ds.drop_vars("depth")
 
-    # Tras el sel/drop anterior ya no hay variables que usen la dim
-    # `depth`, pero la coord aún vive a nivel de Dataset con N niveles
-    # (los del subset 0–200 m). La eliminamos para que `to_netcdf` y
-    # `to_dataframe` queden limpios y la dim `depth` no aparezca en
-    # los archivos de salida.
-    if "depth" in ds.coords:
-        ds = ds.drop_vars("depth")
-
-    ds_regridded = regrid_to_target(ds).load()
-
-    # Reescribir el NetCDF ya regrillado para que Jupyter y los cruces
-    # downstream vean exactamente la grilla unificada.
-    ds_regridded.to_netcdf(nc_path)
+        # Reescribir el NetCDF ya regrillado para que Jupyter y los cruces
+        # downstream vean exactamente la grilla unificada.
+        regrid_and_write_netcdf(ds[list(OUTPUT_VARIABLES)], nc_path)
 
     print(f"Convirtiendo {nc_path} a CSV (streaming por bloques de tiempo)...")
     # Se escribe por bloques de tiempo (stream_dataset_to_csv) para no
-    # expandir el cubo completo a DataFrame de una sola vez (pico de memoria
-    # → OOM en CI). Una fila se conserva si AL MENOS una de las variables
-    # físicas trae valor (how="all"): las NaN costeras de mlotst no deben
-    # botar la fila si la salinidad sí está disponible, etc.
-    stream_dataset_to_csv(
-        ds_regridded[list(OUTPUT_VARIABLES)],
-        list(OUTPUT_VARIABLES),
-        csv_path,
-        dropna_how="all",
-    )
-
-    for col, unit in OUTPUT_VARIABLES.items():
-        print_summary_da(ds_regridded[col], col, unit)
+    # expandir el cubo completo a DataFrame de una sola vez. Una fila se
+    # conserva si AL MENOS una de las variables físicas trae valor
+    # (how="all"): las NaN costeras de mlotst no deben botar la fila si la
+    # salinidad sí está disponible, etc.
+    with xr.open_dataset(nc_path, chunks={"time": TIME_CHUNK}) as ds_rg:
+        stream_dataset_to_csv(
+            ds_rg[list(OUTPUT_VARIABLES)],
+            list(OUTPUT_VARIABLES),
+            csv_path,
+            dropna_how="all",
+            time_chunk=TIME_CHUNK,
+        )
+        for col, unit in OUTPUT_VARIABLES.items():
+            print_summary_da(ds_rg[col], col, unit)
     return csv_path
 
 

@@ -54,6 +54,14 @@ from processing.utils.regions import active_region
 # Paso de la grilla destino: 1/24° ≈ 4 km, coincide con la grilla nativa de CHL L4
 STEP = 1 / 24
 
+# Bloque temporal (nº de pasos de `time`) para procesar las grillas por partes,
+# con dask, en vez de materializar el cubo completo. Es la palanca central de
+# memoria: sin esto, regrillar + exportar el corpus histórico de una región
+# grande (p. ej. REGION=chile) agota la RAM del runner de CI (OOM → GitHub
+# reporta "The operation was canceled"). 60 días mantiene el pico acotado sin
+# fragmentar de más.
+TIME_CHUNK = 60
+
 # Bounding box del área de estudio — derivado del perfil de región activo
 # (processing/utils/regions.py, elegido por la variable de entorno REGION). Se
 # conservan estos cuatro nombres porque todos los descargadores Copernicus y
@@ -135,6 +143,23 @@ def stream_dataset_to_csv(
             header=write_header,
         )
         write_header = False
+
+
+def regrid_and_write_netcdf(ds: xr.Dataset, nc_path: str) -> None:
+    """Regrilla `ds` (grilla nativa) a la grilla destino y reescribe el
+    NetCDF en `nc_path`.
+
+    Si `ds` viene abierto con chunks de dask (p. ej.
+    `xr.open_dataset(path, chunks={"time": TIME_CHUNK})`), el `interp` de
+    `regrid_to_target` queda perezoso y `to_netcdf` lo vuelca bloque a
+    bloque, acotando el pico de memoria — clave para bboxes grandes donde
+    el cubo completo no cabe en RAM. Se escribe primero a un temporal y
+    luego se reemplaza atómicamente, porque `ds` lee de forma perezosa el
+    MISMO archivo destino: recién cuando `to_netcdf` terminó de computar
+    (y leer) todos los bloques es seguro pisar el original."""
+    tmp_path = nc_path + ".tmp"
+    regrid_to_target(ds).to_netcdf(tmp_path)
+    os.replace(tmp_path, nc_path)
 
 
 def print_summary(df, value_column: str, unit: str) -> None:

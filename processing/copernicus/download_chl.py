@@ -27,9 +27,10 @@ from processing.utils.cmems_common import (
     LAT_MIN,
     LON_MAX,
     LON_MIN,
+    TIME_CHUNK,
     print_summary_da,
     read_credentials,
-    regrid_to_target,
+    regrid_and_write_netcdf,
     stream_dataset_to_csv,
 )
 from processing.utils.date_ranges import END_DATE as GLOBAL_END
@@ -101,28 +102,27 @@ def download(
 
 def regrid_and_export(nc_path: str, csv_path: str) -> str:
     """Regrilla el NetCDF a la grilla destino común, lo reescribe en disco
-    y exporta el CSV con la clorofila en mg/m³."""
-    print(f"Regrillando {nc_path} a la grilla destino común...")
+    y exporta el CSV con la clorofila en mg/m³. Todo en streaming por
+    bloques de tiempo (dask) para no materializar el cubo completo (con
+    bboxes grandes el interp + export de una sola vez agota la RAM de CI)."""
+    print(f"Regrillando {nc_path} a la grilla destino común (streaming)...")
 
-    with xr.open_dataset(nc_path) as ds:
-        ds_regridded = regrid_to_target(ds).load()
-
-    # Reescribir el NetCDF ya regrillado para que SST y CHL compartan grilla
-    ds_regridded.to_netcdf(nc_path)
+    with xr.open_dataset(nc_path, chunks={"time": TIME_CHUNK}) as ds:
+        regrid_and_write_netcdf(ds[[VARIABLE]], nc_path)
 
     print(f"Convirtiendo {nc_path} a CSV (streaming por bloques de tiempo)...")
     # CHL ya viene en mg/m³, no hay conversión de unidades; sólo renombrar para
     # claridad. El CSV se escribe por bloques de tiempo (stream_dataset_to_csv)
-    # para no expandir el cubo completo a DataFrame de una sola vez (pico de
-    # memoria → OOM en CI).
-    stream_dataset_to_csv(
-        ds_regridded[[VARIABLE]],
-        ["chl_mg_m3"],
-        csv_path,
-        transform=lambda df: df.rename(columns={VARIABLE: "chl_mg_m3"}),
-    )
-
-    print_summary_da(ds_regridded[VARIABLE], "chl_mg_m3", "mg/m³")
+    # para no expandir el cubo completo a DataFrame de una sola vez.
+    with xr.open_dataset(nc_path, chunks={"time": TIME_CHUNK}) as ds_rg:
+        stream_dataset_to_csv(
+            ds_rg[[VARIABLE]],
+            ["chl_mg_m3"],
+            csv_path,
+            transform=lambda df: df.rename(columns={VARIABLE: "chl_mg_m3"}),
+            time_chunk=TIME_CHUNK,
+        )
+        print_summary_da(ds_rg[VARIABLE], "chl_mg_m3", "mg/m³")
     return csv_path
 
 

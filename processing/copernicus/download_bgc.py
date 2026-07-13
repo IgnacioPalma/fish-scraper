@@ -47,9 +47,10 @@ from processing.utils.cmems_common import (
     LAT_MIN,
     LON_MAX,
     LON_MIN,
+    TIME_CHUNK,
     print_summary_da,
     read_credentials,
-    regrid_to_target,
+    regrid_and_write_netcdf,
     stream_dataset_to_csv,
 )
 from processing.utils.date_ranges import END_DATE as GLOBAL_END
@@ -145,43 +146,43 @@ def regrid_and_export(nc_path: str, csv_path: str) -> str:
     """Reduce el rango vertical a campos 2-D (mínimo 0–200 m para O₂,
     superficie para nppv), regrilla a la grilla destino común,
     reescribe el NetCDF y exporta el CSV."""
-    print(f"Reduciendo profundidades y regrillando {nc_path}...")
+    print(f"Reduciendo profundidades y regrillando {nc_path} (streaming)...")
 
-    with xr.open_dataset(nc_path) as ds_raw:
-        ds = ds_raw.load()
+    # Abrir con chunks de dask (perezoso): la reducción de profundidad, el
+    # regrillado y el export corren por bloques de tiempo para no materializar
+    # el cubo completo (con bboxes grandes agota la RAM del runner de CI).
+    with xr.open_dataset(nc_path, chunks={"time": TIME_CHUNK}) as ds_raw:
+        # Mínimo de O₂ en la columna 0–200 m: proxy del techo de la OMZ.
+        o2_min = ds_raw["o2"].min(dim="depth", skipna=True)
+        nppv_surface = _surface(ds_raw["nppv"])
 
-    # Mínimo de O₂ en la columna 0–200 m: proxy del techo de la OMZ.
-    o2_min = ds["o2"].min(dim="depth", skipna=True)
-    nppv_surface = _surface(ds["nppv"])
+        ds = ds_raw.drop_vars(["o2", "nppv"])
+        ds = ds.assign(o2_min_0_200m=o2_min, nppv=nppv_surface)
 
-    ds = ds.drop_vars(["o2", "nppv"])
-    ds = ds.assign(o2_min_0_200m=o2_min, nppv=nppv_surface)
+        # Tras el min/sel anterior ya no hay variables que usen la dim
+        # `depth`, pero la coord aún vive a nivel de Dataset con los
+        # niveles del subset (0–200 m). La eliminamos para que `to_netcdf`
+        # y `to_dataframe` queden limpios y la dim `depth` no aparezca en
+        # los archivos de salida.
+        if "depth" in ds.coords:
+            ds = ds.drop_vars("depth")
 
-    # Tras el min/sel anterior ya no hay variables que usen la dim
-    # `depth`, pero la coord aún vive a nivel de Dataset con los
-    # niveles del subset (0–200 m). La eliminamos para que `to_netcdf`
-    # y `to_dataframe` queden limpios y la dim `depth` no aparezca en
-    # los archivos de salida.
-    if "depth" in ds.coords:
-        ds = ds.drop_vars("depth")
-
-    ds_regridded = regrid_to_target(ds).load()
-    ds_regridded.to_netcdf(nc_path)
+        regrid_and_write_netcdf(ds[list(OUTPUT_VARIABLES)], nc_path)
 
     print(f"Convirtiendo {nc_path} a CSV (streaming por bloques de tiempo)...")
     # Se escribe por bloques de tiempo (stream_dataset_to_csv) para no
-    # expandir el cubo completo a DataFrame de una sola vez (pico de memoria
-    # → OOM en CI). how="all" conserva la fila si al menos una variable trae
-    # valor.
-    stream_dataset_to_csv(
-        ds_regridded[list(OUTPUT_VARIABLES)],
-        list(OUTPUT_VARIABLES),
-        csv_path,
-        dropna_how="all",
-    )
-
-    for col, unit in OUTPUT_VARIABLES.items():
-        print_summary_da(ds_regridded[col], col, unit)
+    # expandir el cubo completo a DataFrame de una sola vez. how="all"
+    # conserva la fila si al menos una variable trae valor.
+    with xr.open_dataset(nc_path, chunks={"time": TIME_CHUNK}) as ds_rg:
+        stream_dataset_to_csv(
+            ds_rg[list(OUTPUT_VARIABLES)],
+            list(OUTPUT_VARIABLES),
+            csv_path,
+            dropna_how="all",
+            time_chunk=TIME_CHUNK,
+        )
+        for col, unit in OUTPUT_VARIABLES.items():
+            print_summary_da(ds_rg[col], col, unit)
     return csv_path
 
 
