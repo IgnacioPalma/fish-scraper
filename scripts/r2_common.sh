@@ -58,13 +58,22 @@ r2_paths() {
     vms)        echo "raw/locations/raw_daily data/processing/locations/raw_daily" ;;
     capture)    echo "raw/capture/input data/processing/capture/input" ;;
     copernicus) echo "raw/${R2_REGION}/copernicus data/copernicus" ;;
+    # Igual que `copernicus` pero el pull baja SOLO las 4 grillas .nc que consume
+    # el pipeline de cómputo (sst/chl/phy/bgc; ver r2_pull.sh y
+    # processing/copernicus/sample_haul_environment.py). Excluye los .csv (export
+    # legible, nadie los lee) y sla/wind (sin uso), que llenaban el disco del runner.
+    copernicus-nc) echo "raw/${R2_REGION}/copernicus data/copernicus" ;;
     output)     echo "output/${R2_REGION} data/output" ;;
     raw)        r2_paths ifop; r2_paths registry; r2_paths vms; r2_paths capture; r2_paths copernicus ;;
     *) echo "componente desconocido: $1 (usa: ifop|registry|vms|capture|copernicus|raw|output)" >&2; return 1 ;;
   esac
 }
 
-# r2_sync <origen> <destino> : sync recursivo silencioso (solo errores).
+# r2_sync <origen> <destino> [args aws…] : sync recursivo silencioso (solo
+# errores). Los args extra se pasan tal cual a `aws s3 sync` (p.ej. filtros
+# --exclude/--include para bajar solo un subconjunto de la carpeta).
 r2_sync() {
-  aws s3 sync "$1" "$2" --endpoint-url "$R2_ENDPOINT" --only-show-errors
+  local src="$1" dst="$2"
+  shift 2
+  aws s3 sync "$src" "$dst" --endpoint-url "$R2_ENDPOINT" --only-show-errors "$@"
 }

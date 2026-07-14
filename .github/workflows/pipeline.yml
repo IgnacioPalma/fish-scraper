@@ -39,7 +39,9 @@ jobs:
           enable-cache: true
       - run: uv sync
       - name: Traer corpus crudo desde R2
-        run: scripts/r2_pull.sh raw
+        # copernicus-nc (no `copernicus`): baja solo las 4 grillas .nc que consume
+        # el pipeline; omite los .csv y sla/wind, que llenaban el disco del runner.
+        run: scripts/r2_pull.sh ifop registry vms capture copernicus-nc
       - name: Procesar (run_all --skip-scrape --skip-download)
         run: uv run python -m processing.run_all --skip-scrape --skip-download
       - name: Subir productos a R2
