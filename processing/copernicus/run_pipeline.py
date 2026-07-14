@@ -7,8 +7,7 @@ en orden:
   2. download_chl   → data/copernicus/chl_atacama_<rango>.{nc,csv}
   3. download_phy   → data/copernicus/phy_atacama_<rango>.{nc,csv}  (mlotst, so_0m, …)
   4. download_bgc   → data/copernicus/bgc_atacama_<rango>.{nc,csv}  (o2_min_0_200m, nppv)
-  5. download_wind  → data/copernicus/wind_atacama_<rango>.{nc,csv} (east/northward_wind)
-  6. sample_haul_environment → data/output/zarpes_atacama_haul_env.csv
+  5. sample_haul_environment → data/output/zarpes_atacama_haul_env.csv
 
 Cada etapa es el `main()` del módulo correspondiente; si una falla aborta con
 código distinto de cero (las etapas ya imprimen una pista en stderr), el pipeline
@@ -55,31 +54,27 @@ def main() -> None:
     if args.skip_download:
         print("(--skip-download: se omiten las descargas; se reutilizan las grillas existentes)")
     else:
-        _etapa("1/6 · Descarga SST (temperatura superficial)")
+        _etapa("1/5 · Descarga SST (temperatura superficial)")
         from processing.copernicus import download_sst
         download_sst.main()
 
-        _etapa("2/6 · Descarga CHL (clorofila)")
+        _etapa("2/5 · Descarga CHL (clorofila)")
         from processing.copernicus import download_chl
         download_chl.main()
 
-        _etapa("3/6 · Descarga PHY (MLD + salinidad superficial)")
+        _etapa("3/5 · Descarga PHY (MLD + salinidad superficial)")
         from processing.copernicus import download_phy
         download_phy.main()
 
-        _etapa("4/6 · Descarga BGC (O₂ mínimo 0–200 m + nppv)")
+        _etapa("4/5 · Descarga BGC (O₂ mínimo 0–200 m + nppv)")
         from processing.copernicus import download_bgc
         download_bgc.main()
-
-        _etapa("5/6 · Descarga WIND (viento a 10 m → esfuerzo del viento)")
-        from processing.copernicus import download_wind
-        download_wind.main()
 
     if args.download_only:
         _etapa("Descarga Copernicus completa (--download-only: se omite el muestreo)")
         return
 
-    _etapa("6/6 · Muestreo de capas en cada lance")
+    _etapa("5/5 · Muestreo de capas en cada lance")
     from processing.copernicus import sample_haul_environment
     sample_haul_environment.main()
 

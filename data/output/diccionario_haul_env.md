@@ -33,16 +33,10 @@ del lance + columnas de auditoría.
 | **`o2_min_mmol_m3`** | mmol/m³ | Mínimo de O₂ disuelto en 0–200 m (techo de la OMZ; comprime el hábitat pelágico). |
 | **`sst_front_c_per_km`** | °C/km | Magnitud del gradiente horizontal de SST \|∇SST\| (intensidad del frente térmico en el lance). |
 | **`chl_front_mg_m3_per_km`** | (mg/m³)/km | Magnitud del gradiente horizontal de clorofila \|∇CHL\| (intensidad del frente de productividad). |
-| **`wind_stress_pa`** | Pa (N/m²) | Módulo del esfuerzo del viento τ = ρ·C_d·\|U\|² (ρ=1.22 kg/m³, C_d=1.3e-3); forzante del afloramiento costero. |
-| **`wind_stress_east_pa`** | Pa | Componente zonal (este +) del esfuerzo del viento. |
-| **`wind_stress_north_pa`** | Pa | Componente meridional (norte +) del esfuerzo del viento; para derivar el componente along-shore/upwelling. |
 | **`moon_illumination`** | — | Fracción iluminada del disco lunar en la fecha del lance (0 = luna nueva, 1 = luna llena); modula la captabilidad del cerco. |
 | `env_time` | YYYY-MM-DD | Día de la grilla oceánica efectivamente muestreado (el más cercano al lance). |
 | `env_cell_dist_km` | km | Distancia máxima a una celda oceánica muestreada; 0 si todas fueron la celda más cercana, > 0 si hubo fallback costero. |
 | `env_status` | — | `ok` (todas exactas) · `fallback` (alguna usó la celda de mar más cercana) · `fuera_de_rango` (lance fuera de la cobertura temporal de las grillas oceánicas). El estado `sin_coords` no aparece aquí: todos los lances de este dataset tienen ubicación. Los frentes comparten estado con SST/CHL. |
-| `wind_time` | YYYY-MM-DD | Día de la grilla de viento efectivamente muestreado (auditoría propia: el viento tiene cobertura temporal distinta a las capas oceánicas). |
-| `wind_cell_dist_km` | km | Distancia máxima a una celda de viento muestreada; > 0 si hubo fallback costero. |
-| `wind_status` | — | Estado del muestreo de viento (`ok` · `fallback` · `fuera_de_rango` · `sin_grilla`), análogo a `env_status`. Si la grilla de viento no cubre la fecha del lance, `wind_stress_*` queda nulo y `wind_status = fuera_de_rango`; si la capa de viento no se descargó aún, `wind_status = sin_grilla` (el resto de covariables no se ven afectadas). |
 
 > **Nota sobre el O₂.** El producto biogeoquímico es de 0.25° (~25 km), la única
 > resolución del reanálisis BGC. Su máscara de tierra gruesa empuja a varios lances
@@ -57,14 +51,6 @@ del lance + columnas de auditoría.
 > `sst_front` está en °C/km sin conversión. El borde tierra-mar hereda el NaN de la
 > máscara, así que un lance pegado a la costa puede tomar el gradiente de la celda de
 > mar más cercana (mismo fallback que las demás capas oceánicas).
-
-> **Nota sobre el viento.** El esfuerzo del viento usa la fórmula bulk
-> τ = ρ_air·C_d·\|U\|·U con ρ_air = 1.22 kg/m³ y C_d = 1.3e-3 constante (aproximación
-> estándar a 10 m); `wind_stress_pa` es el módulo y `wind_stress_east/north_pa` sus
-> componentes. El producto de viento (`wind_atacama_*`) tiene cobertura temporal
-> propia — si no cubre el rango de los lances, hay que re-descargarlo con
-> `uv run python -m processing.copernicus.download_wind --force`; mientras tanto los
-> lances sin cobertura quedan con `wind_stress_*` nulo y `wind_status = fuera_de_rango`.
 
 > **Nota sobre la fase lunar.** `moon_illumination` no se descarga: se deriva de la
 > fecha del lance con el mes sinódico medio (error < ~0.02 en la fracción iluminada),

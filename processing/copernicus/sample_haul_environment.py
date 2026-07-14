@@ -17,18 +17,13 @@ en `data/copernicus/` (paquete `processing.copernicus`):
   o2_min_mmol_m3            BGC        o2_min_0_200m      identidad (mín. O₂ 0–200 m, techo OMZ)
   sst_front_c_per_km        SST        analysed_sst       |∇SST| (°C/km, frente térmico)
   chl_front_mg_m3_per_km    CHL        CHL                |∇CHL| ((mg/m³)/km, frente de clorofila)
-  wind_stress_pa            WIND       east/northward_wind  τ = ρ·C_d·|U|² (Pa)
-  wind_stress_east_pa       WIND       eastward_wind      componente zonal de τ (Pa)
-  wind_stress_north_pa      WIND       northward_wind     componente meridional de τ (Pa)
   moon_illumination         —          (fecha del lance)  fracción iluminada del disco lunar [0,1]
 
-Las tres familias nuevas indexan procesos de agregación del jurel: los FRENTES
+Las dos familias nuevas indexan procesos de agregación del jurel: los FRENTES
 (gradientes horizontales de SST y CHL) marcan bordes de masas de agua donde se
-concentra el alimento; el ESFUERZO DEL VIENTO forza el afloramiento costero de
-Humboldt; y la FASE LUNAR modula la captabilidad del cerco (el jurel se hunde en
-noches de luna llena). La fase lunar sólo depende de la fecha (no se descarga) y
-el viento es un producto aparte con cobertura propia, por eso lleva su propia
-auditoría (wind_status / wind_time / wind_cell_dist_km).
+concentra el alimento; y la FASE LUNAR modula la captabilidad del cerco (el jurel
+se hunde en noches de luna llena). La fase lunar sólo depende de la fecha (no se
+descarga).
 
 Las covariables oceánicas base covarían con la literatura de jurel en Humboldt: la
 salinidad superficial discrimina masas de agua (frente subtropical) y el mínimo de
@@ -56,15 +51,14 @@ variables nulas y `env_status == "sin_coords"`.
 
 Entrada:
   data/processing/locations/single_haul/zarpes_atacama_haul_single.csv
-  data/copernicus/{sst,chl,phy,bgc,wind}_atacama_*.nc   (se globa por producto; tolera
+  data/copernicus/{sst,chl,phy,bgc}_atacama_*.nc   (se globa por producto; tolera
       el archivo de un año y el multi-año a la vez)
 
 Salida:
   data/output/zarpes_<region>_haul_env.csv
       → la tabla de lances + las covariables de arriba
         + auditoría oceánica: env_time (día de grilla usado), env_cell_dist_km (máx.
-        distancia a una celda muestreada; 0 si todas fueron la más cercana) y env_status
-        + auditoría de viento: wind_time, wind_cell_dist_km, wind_status.
+        distancia a una celda muestreada; 0 si todas fueron la más cercana) y env_status.
 
 Uso:
     uv run python -m processing.copernicus.sample_haul_environment
@@ -92,11 +86,6 @@ MAX_FALLBACK_KM = 25.0
 # margen distingue eso de un lance fuera del rango descargado (días/meses de distancia).
 TIME_TOL = pd.Timedelta(days=2)
 
-# Esfuerzo del viento (fórmula bulk τ = ρ_air · C_d · |U| · U): densidad del aire y
-# coeficiente de arrastre constante (aproximación estándar para el viento a 10 m).
-RHO_AIR = 1.22    # kg/m³
-DRAG_COEF = 1.3e-3
-
 # Fase lunar: instante de una luna nueva de referencia (UTC) y mes sinódico medio.
 # Basta para una covariable (error < ~0.02 en la fracción iluminada).
 _MOON_NEW_REF = pd.Timestamp("2000-01-06 18:14:00")
@@ -122,10 +111,6 @@ GRADIENT_PRODUCTS = [
     ("chl_atacama", "CHL", "chl_front_mg_m3_per_km"),
 ]
 
-# Grilla de viento (base): se muestrean las dos componentes y luego se deriva el
-# esfuerzo del viento; las componentes crudas no se emiten como columnas.
-WIND_BASE = "wind_atacama"
-
 # Severidad de cada estado (se queda el peor por fila).
 _STATUS_RANK = {"ok": 0, "fallback": 1, "fuera_de_rango": 2}
 
@@ -139,29 +124,20 @@ def _haversine(lat1, lon1, lat2, lon2):
     return 2 * EARTH_RADIUS_KM * np.arcsin(np.sqrt(a))
 
 
-def _abrir_producto(base: str, *, requerido: bool = True) -> xr.Dataset | None:
+def _abrir_producto(base: str) -> xr.Dataset:
     """Une todos los `<base>_*.nc` de data/copernicus en un Dataset por tiempo.
 
     Tolera que coexistan el archivo de un año (`_2023.nc`) y el multi-año
     (`_2023_2024.nc`): concatena por tiempo, ordena y deja un día por tiempo
-    (el último, que proviene del archivo de mayor cobertura).
-
-    Con `requerido=False`, si no hay ninguna grilla, avisa y devuelve `None` en vez
-    de abortar — para capas opcionales (viento) cuya ausencia sólo deja columnas
-    nulas, sin tumbar todo el muestreo (p. ej. el chequeo semanal en CI antes de que
-    refresh-copernicus cachee la capa en R2)."""
+    (el último, que proviene del archivo de mayor cobertura). Si no hay ninguna
+    grilla para la capa, aborta con una pista para generarla."""
     paths = sorted(COPERNICUS_DIR.glob(f"{base}_*.nc"))
     if not paths:
-        msg = (
+        sys.exit(
             f"No se encontró ninguna grilla `{base}_*.nc` en {COPERNICUS_DIR}.\n"
             f"Generala con `uv run python -m processing.copernicus.download_"
             f"{base.split('_')[0]}` antes de muestrear."
         )
-        if requerido:
-            sys.exit(msg)
-        print(f"AVISO: {msg}\n       Se omite esta capa (sus columnas quedan nulas).",
-              file=sys.stderr)
-        return None
     datasets = [xr.open_dataset(p) for p in paths]
     # `join="exact"` exige que todos los archivos compartan exactamente la grilla
     # destino común (lat/lon): si alguno trae otra grilla (p.ej. un descargado crudo
@@ -280,14 +256,10 @@ def main() -> None:
     hauls = pd.read_csv(HAUL_CSV)
     hauls["haul_start"] = pd.to_datetime(hauls["haul_start"], errors="coerce")
 
-    # Abrir cada grilla base una sola vez. El viento es un producto aparte con su
-    # propia cobertura, así que lleva su propia auditoría (wind_status/…).
+    # Abrir cada grilla base una sola vez.
     ocean_bases = {b for b, *_ in POINT_PRODUCTS} | {b for b, _, _ in GRADIENT_PRODUCTS}
-    print(f"Abriendo grillas Copernicus para: {', '.join(sorted(ocean_bases | {WIND_BASE}))}")
+    print(f"Abriendo grillas Copernicus para: {', '.join(sorted(ocean_bases))}")
     grillas = {base: _abrir_producto(base) for base in ocean_bases}
-    # El viento es opcional: si su grilla aún no está (p. ej. CI antes del refresh),
-    # el esfuerzo del viento queda nulo con wind_status="sin_grilla" en vez de abortar.
-    wind_ds = _abrir_producto(WIND_BASE, requerido=False)
 
     # Muestreadores oceánicos: (columna, DataArray, tipo, transformación). Los frentes
     # (`frente`) muestrean |∇campo| calculado por corte diario sobre las mismas grillas
@@ -302,9 +274,8 @@ def main() -> None:
 
     ocean_cols = [col for col, *_ in ocean_samplers]
     resultados = {col: [] for col in ocean_cols}
-    wind_stress, wind_stress_e, wind_stress_n, moon = [], [], [], []
+    moon = []
     env_status, env_dist, env_time = [], [], []
-    wind_status, wind_dist, wind_time = [], [], []
 
     for _, row in hauls.iterrows():
         lat, lon, ts = row["haul_lat"], row["haul_lon"], row["haul_start"]
@@ -316,8 +287,6 @@ def main() -> None:
             for col in ocean_cols:
                 resultados[col].append(np.nan)
             env_status.append("sin_coords"), env_dist.append(np.nan), env_time.append(pd.NaT)
-            wind_stress.append(np.nan), wind_stress_e.append(np.nan), wind_stress_n.append(np.nan)
-            wind_status.append("sin_coords"), wind_dist.append(np.nan), wind_time.append(pd.NaT)
             continue
 
         lat, lon = float(lat), float(lon)
@@ -338,51 +307,21 @@ def main() -> None:
                 t_usado = t_grilla
         env_status.append(peor), env_dist.append(max_dist), env_time.append(t_usado)
 
-        # --- Esfuerzo del viento (τ = ρ_air · C_d · |U| · U por componente) ---
-        if wind_ds is None:
-            wind_stress.append(np.nan), wind_stress_e.append(np.nan), wind_stress_n.append(np.nan)
-            wind_status.append("sin_grilla"), wind_dist.append(np.nan), wind_time.append(pd.NaT)
-        else:
-            u, du, su, tu = _muestrear(wind_ds["eastward_wind"], ts, lat, lon)
-            v, dv, sv, tv = _muestrear(wind_ds["northward_wind"], ts, lat, lon)
-            if np.isfinite(u) and np.isfinite(v):
-                k = RHO_AIR * DRAG_COEF * np.hypot(u, v)
-                wind_stress.append(k * np.hypot(u, v))
-                wind_stress_e.append(k * u)
-                wind_stress_n.append(k * v)
-            else:
-                wind_stress.append(np.nan), wind_stress_e.append(np.nan), wind_stress_n.append(np.nan)
-            wind_status.append(su if _STATUS_RANK[su] >= _STATUS_RANK[sv] else sv)
-            dists = [d for d in (du, dv) if np.isfinite(d)]
-            wind_dist.append(max(dists) if dists else np.nan)
-            wind_time.append(tu if pd.notna(tu) else tv)
-
     for col in ocean_cols:
         hauls[col] = resultados[col]
-    hauls["wind_stress_pa"] = wind_stress
-    hauls["wind_stress_east_pa"] = wind_stress_e
-    hauls["wind_stress_north_pa"] = wind_stress_n
     hauls["moon_illumination"] = moon
     hauls["env_time"] = pd.to_datetime(pd.Series(env_time)).dt.strftime("%Y-%m-%d")
     hauls["env_cell_dist_km"] = np.round(env_dist, 3)
     hauls["env_status"] = env_status
-    hauls["wind_time"] = pd.to_datetime(pd.Series(wind_time)).dt.strftime("%Y-%m-%d")
-    hauls["wind_cell_dist_km"] = np.round(pd.Series(wind_dist, dtype="float64"), 3)
-    hauls["wind_status"] = wind_status
 
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     hauls.to_csv(OUTPUT_CSV, index=False)
 
     # --- Resumen ----------------------------------------------------------
-    display_cols = ocean_cols + [
-        "wind_stress_pa", "wind_stress_east_pa", "wind_stress_north_pa", "moon_illumination",
-    ]
+    display_cols = ocean_cols + ["moon_illumination"]
     print(f"\nLances procesados: {len(hauls)}")
     print("Estado oceánico (env_status):")
     for estado, n in hauls["env_status"].value_counts().items():
-        print(f"  {estado:>15}: {n}")
-    print("Estado viento (wind_status):")
-    for estado, n in hauls["wind_status"].value_counts().items():
         print(f"  {estado:>15}: {n}")
     print("Variables ambientales (mín / media / máx sobre valores no nulos):")
     for col in display_cols:

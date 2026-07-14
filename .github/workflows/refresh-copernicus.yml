@@ -1,6 +1,6 @@
 name: refresh-copernicus
 
-# Descarga las grillas Copernicus (SST/CHL/PHY/BGC/WIND) en la nube y las cachea en R2.
+# Descarga las grillas Copernicus (SST/CHL/PHY/BGC) en la nube y las cachea en R2.
 # Se dispara a mano; el corpus histórico es estático, así que se corre rara vez.
 # Baja las grillas existentes desde R2 antes de descargar (skip-if-exists) y vuelve
 # a subirlas al terminar.
@@ -33,7 +33,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        layer: [sst, chl, phy, bgc, wind]
+        layer: [sst, chl, phy, bgc]
     env:
       COPERNICUS_USERNAME: ${{ secrets.COPERNICUS_USERNAME }}
       COPERNICUS_PASSWORD: ${{ secrets.COPERNICUS_PASSWORD }}

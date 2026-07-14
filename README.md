@@ -9,9 +9,8 @@ Este proyecto descarga datos diarios del servicio Copernicus Marine para la fran
 - **PHY** — Mixed Layer Depth, salinidad superficial y temperatura potencial a ~400 m (diario, 1/12°).
 - **BGC** — Oxígeno disuelto mínimo 0–200 m (proxy del techo de la OMZ) y producción primaria neta (diario, 0.25°). El reanálisis BGC global no expone biomasa de plancton (`phyc`/`zooc`); quedan fuera del alcance de este flujo.
 - **SLA** — Anomalía del nivel del mar, topografía dinámica absoluta y velocidades geostróficas u/v (diario, 0.125°).
-- **WIND** — Componentes zonal y meridional del viento a 10 m (diario tras agregación, 0.125°).
 
-Todas las capas terminan sobre la misma grilla 1/24° (≈4 km), de modo que un cruce SST↔CHL↔PHY↔BGC↔SLA↔WIND es un `pd.merge(..., on=["time", "latitude", "longitude"])` directo, sin regrillado posterior. También provee un servidor Jupyter para análisis posterior. El entorno Python se gestiona con [uv](https://docs.astral.sh/uv/) y su lockfile (`uv.lock`), de forma que las dependencias quedan fijadas de forma reproducible.
+Todas las capas terminan sobre la misma grilla 1/24° (≈4 km), de modo que un cruce SST↔CHL↔PHY↔BGC↔SLA es un `pd.merge(..., on=["time", "latitude", "longitude"])` directo, sin regrillado posterior. También provee un servidor Jupyter para análisis posterior. El entorno Python se gestiona con [uv](https://docs.astral.sh/uv/) y su lockfile (`uv.lock`), de forma que las dependencias quedan fijadas de forma reproducible.
 
 ## Ejecución en la nube
 
@@ -21,7 +20,7 @@ El pipeline histórico también corre en GitHub Actions, dejando el corpus crudo
 
 - [uv](https://docs.astral.sh/uv/getting-started/installation/) instalado. uv descarga e instala automáticamente Python 3.11 (ver `.python-version`) si no lo tienes.
 - Una cuenta gratuita en [Copernicus Marine](https://data.marine.copernicus.eu/register).
-- ~3–5 GB de espacio libre en disco si descargas las seis capas (SST, CHL, PHY, BGC, SLA, WIND); ~1 GB si sólo bajas SST y CHL.
+- ~3–5 GB de espacio libre en disco si descargas las cinco capas (SST, CHL, PHY, BGC, SLA); ~1 GB si sólo bajas SST y CHL.
 
 ## Configuración inicial
 
@@ -50,15 +49,13 @@ uv run python -m processing.copernicus.download_chl    # Chlorophyll-a
 uv run python -m processing.copernicus.download_phy    # MLD, salinidad superficial, temp 400 m
 uv run python -m processing.copernicus.download_bgc    # O₂ min 0–200 m, zooplancton, fitoplancton, NPP
 uv run python -m processing.copernicus.download_sla    # SLA, ADT, ugos, vgos (altimetría)
-uv run python -m processing.copernicus.download_wind   # vientos a 10 m (agregados a media diaria)
 
-# Las seis en secuencia (corta a la primera falla)
+# Las cinco en secuencia (corta a la primera falla)
 uv run python -m processing.copernicus.download_sst && \
 uv run python -m processing.copernicus.download_chl && \
 uv run python -m processing.copernicus.download_phy && \
 uv run python -m processing.copernicus.download_bgc && \
-uv run python -m processing.copernicus.download_sla && \
-uv run python -m processing.copernicus.download_wind
+uv run python -m processing.copernicus.download_sla
 ```
 
 Al finalizar, los archivos quedan en `./data/copernicus/`, con un sufijo de año derivado del rango efectivo descargado (intersección de `START_DATE`/`END_DATE` con la disponibilidad del producto):
@@ -68,7 +65,6 @@ Al finalizar, los archivos quedan en `./data/copernicus/`, con un sufijo de año
 - `phy_atacama_<rango>.nc` / `.csv` — columnas `mlotst, so_0m, thetao_400m`.
 - `bgc_atacama_<rango>.nc` / `.csv` — columnas `o2_min_0_200m, nppv`.
 - `sla_atacama_<rango>.nc` / `.csv` — columnas `sla, adt, ugos, vgos`.
-- `wind_atacama_<rango>.nc` / `.csv` — columnas `eastward_wind, northward_wind`.
 
 Donde `<rango>` es `2023` para un único año o `2017_2022` si abarca varios. Cada script imprime el rango global solicitado, la disponibilidad del producto y el rango efectivo (intersección) antes de descargar. Si la intersección es vacía (p. ej. el rango global está fuera de la cobertura del reanálisis multi-año), el script lo informa y sale sin descargar.
 
@@ -214,15 +210,6 @@ uv run python -c "import copernicusmarine, re; out = str(copernicusmarine.descri
 
 Elige el que contenga `allsat-l4-duacs` y termine en `_P1D`. Luego edita `DATASET_ID` en `processing/copernicus/download_sla.py`.
 
-**Error: dataset WIND (vientos) no encontrado o renombrado.**
-El script usa `cmems_obs-wind_glo_phy_my_l4_0.125deg_PT1H` dentro del producto `WIND_GLO_PHY_L4_MY_012_006`. Para descubrir el ID actual:
-
-```bash
-uv run python -c "import copernicusmarine, re; out = str(copernicusmarine.describe(contains=['WIND_GLO_PHY_L4_MY_012_006'])); print('\n'.join(sorted(set(re.findall(r'cmems_obs-wind_glo_phy[A-Za-z0-9_.-]+', out)))))"
-```
-
-Si Copernicus publica un dataset ya pre-agregado a paso diario (`_P1D` en lugar de `_PT1H`), conviene usarlo: ahorra ~24× espacio en disco. Si lo eliges, edita `DATASET_ID` en `processing/copernicus/download_wind.py` y borra/comenta la línea `ds.resample(time="1D").mean()` en `regrid_and_export`.
-
 **Saltos de línea en Windows.**
 Si editas `.env` o `download_sst.py` con un editor que guarda en formato CRLF, normalmente no hay problema porque Python tolera ambos formatos. Si aparece algún error raro, configura tu editor (VS Code, Notepad++) para guardar en LF.
 
@@ -246,8 +233,7 @@ sst_atacama/
 │   │   ├── download_chl.py    # CHL (OCEANCOLOUR_GLO_BGC_L4_MY_009_104)
 │   │   ├── download_phy.py    # MLD/SSS/thetao_400m (GLOBAL_MULTIYEAR_PHY_001_030)
 │   │   ├── download_bgc.py    # O₂ min, nppv (GLOBAL_MULTIYEAR_BGC_001_029)
-│   │   ├── download_sla.py    # sla, adt, ugos, vgos (SEALEVEL_GLO_PHY_L4_MY_008_047)
-│   │   └── download_wind.py   # vientos a 10 m (WIND_GLO_PHY_L4_MY_012_006)
+│   │   └── download_sla.py    # sla, adt, ugos, vgos (SEALEVEL_GLO_PHY_L4_MY_008_047)
 │   ├── locations/         # subpaquete con el pipeline VMS de Sernapesca
 │   │   ├── __init__.py
 │   │   ├── scraper/       # descarga: CSV diarios VMS (flota artesanal)
