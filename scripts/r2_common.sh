@@ -32,10 +32,12 @@ export AWS_SECRET_ACCESS_KEY="$R2_SECRET_ACCESS_KEY"
 export AWS_DEFAULT_REGION="auto"
 
 # Alcance geográfico del proyecto (el mismo REGION que usa el código Python;
-# ver processing/utils/regions.py). Prefija TODAS las claves R2 con la región
-# para que distintos alcances no se pisen en el bucket: el crudo de Copernicus
-# viene recortado al bbox de la región, así que atacama y chile son datos
-# distintos que sin este prefijo colisionarían en la misma clave.
+# ver processing/utils/regions.py). Solo el crudo de Copernicus (y los productos
+# de `output`) se prefijan por región: vienen recortados al bbox, así que atacama
+# y chile son datos distintos que sin el prefijo colisionarían en la misma clave.
+# El resto del corpus crudo (ifop, registry, vms, capture) son scrapes NACIONALES
+# idénticos entre regiones, así que cuelgan de raw/ sin el segmento de región — no
+# tiene sentido duplicarlos por región.
 # Se lee del entorno (en CI viene del workflow; local, del .env ya cargado arriba),
 # por defecto 'atacama'. Se normaliza a minúsculas como en active_region().
 R2_REGION="$(printf '%s' "${REGION:-atacama}" | tr '[:upper:]' '[:lower:]')"
@@ -45,13 +47,16 @@ R2_REGION="$(printf '%s' "${REGION:-atacama}" | tr '[:upper:]' '[:lower:]')"
 # la unión de ifop + registry + vms + capture + copernicus. El componente
 # `capture` trae la bitácora IFOP manual (data/processing/capture/input/
 # bitacora.csv), única entrada que no se scrapea ni descarga.
+# Layout del bucket: todo el corpus cuelga de raw/; los componentes nacionales
+# NO se anidan por región (raw/ifop, raw/registry, raw/locations, raw/capture) y
+# solo copernicus se anida bajo la región (raw/<region>/copernicus).
 r2_paths() {
   case "$1" in
-    ifop)       echo "raw/${R2_REGION}/ifop/raw data/processing/ifop/raw" ;;
-    registry)   echo "raw/${R2_REGION}/registry/raw data/processing/registry/raw"
-                echo "raw/${R2_REGION}/registry/fishing_types data/processing/registry/fishing_types" ;;
-    vms)        echo "raw/${R2_REGION}/locations/raw_daily data/processing/locations/raw_daily" ;;
-    capture)    echo "raw/${R2_REGION}/capture/input data/processing/capture/input" ;;
+    ifop)       echo "raw/ifop/raw data/processing/ifop/raw" ;;
+    registry)   echo "raw/registry/raw data/processing/registry/raw"
+                echo "raw/registry/fishing_types data/processing/registry/fishing_types" ;;
+    vms)        echo "raw/locations/raw_daily data/processing/locations/raw_daily" ;;
+    capture)    echo "raw/capture/input data/processing/capture/input" ;;
     copernicus) echo "raw/${R2_REGION}/copernicus data/copernicus" ;;
     output)     echo "output/${R2_REGION} data/output" ;;
     raw)        r2_paths ifop; r2_paths registry; r2_paths vms; r2_paths capture; r2_paths copernicus ;;
