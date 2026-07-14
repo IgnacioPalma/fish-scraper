@@ -33,6 +33,15 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 180
     steps:
+      # Las grillas Copernicus de toda la costa (REGION=chile, 2019–2024) no caben
+      # en el disco libre del runner junto al software preinstalado. Se borra el que
+      # no usamos (Android, .NET, CodeQL, GHC ≈ 25–30 GB) ANTES de instalar uv para
+      # no tocar nada de lo que dependa la toolchain. df -h deja el margen en el log.
+      - name: Liberar espacio en el runner
+        run: |
+          sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc \
+            /opt/hostedtoolcache/CodeQL /usr/local/share/boost || true
+          df -h /
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v5
         with:
