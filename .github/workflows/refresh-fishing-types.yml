@@ -1,0 +1,87 @@
+name: refresh-fishing-types
+
+# Re-scrapea SOLO el arte por RPA (etapa 6 del pipeline de registro, "fishing_types")
+# y lo sube a R2. Se dispara a mano.
+#
+# Por qué existe como workflow aparte:
+#   `cerco_filter` (etapa 7) arma el registro FINAL leyendo únicamente
+#   fishing_types/register.csv (el output del scrape por RPA), no el registro ya
+#   recortado a la región. Como el pipeline de la nube corre `--skip-scrape`, ese
+#   scrape NO se regenera ahí: se reutiliza el que esté cacheado en R2. Si el caché
+#   se scrapeó bajo una región chica (p.ej. atacama → solo III REGION), ampliar
+#   REGION a `chile` no cambia nada: el registro final queda pinneado a esa región.
+#   Este workflow refresca ese caché para la región elegida.
+#
+# El registro nacional crudo (etapa 1) NO se re-scrapea: ya vive nacional en R2
+# (raw/registry/raw). Se corre `--skip-initial-scrape`, que reutiliza ese crudo y
+# corre las etapas 2-7 — incluida la consulta por RPA (etapa 6) sobre el registro
+# ya ampliado a la región. El scraper es incremental (cachea raw_scrape.csv y solo
+# consulta los RPA nuevos), así que si el job se corta por tiempo, re-dispararlo
+# reanuda desde el checkpoint.
+on:
+  workflow_dispatch:
+    inputs:
+      region:
+        description: "Región para el scrape (define qué RPA se consultan). Vacío = usa la variable de repo REGION."
+        required: false
+        default: ""
+
+# Escribe la misma porción de R2 que la etapa registry de refresh-ifop; evita que
+# ambos se pisen.
+concurrency:
+  group: refresh-registry
+  cancel-in-progress: false
+
+env:
+  # Región del scrape: input manual si se dio, si no la variable de repo (por
+  # defecto atacama). Para cubrir toda la flota nacional, correr con region=chile.
+  REGION: ${{ inputs.region != '' && inputs.region || vars.REGION || 'atacama' }}
+  R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+  R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+  R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+  R2_BUCKET: ${{ secrets.R2_BUCKET }}
+
+jobs:
+  fishing-types:
+    runs-on: ubuntu-latest
+    timeout-minutes: 350  # bajo el tope de 6 h; el scraper reanuda por checkpoint
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+      - run: uv sync
+      - name: Traer IFOP + registro crudo desde R2 (incluye caché fishing_types para reanudar)
+        run: scripts/r2_pull.sh ifop registry
+      - name: Derivar vessels.csv de IFOP (sin re-scrapear)
+        run: uv run python -m processing.ifop.run_pipeline --skip-scrape
+      - name: Scrapear arte por RPA (fishing_types) para la región
+        # --skip-initial-scrape: reutiliza raw/register.csv nacional (etapa 1) y
+        # corre etapas 2-7, incluida la consulta por RPA (etapa 6) ya ampliada a REGION.
+        run: uv run python -m processing.registry.run_pipeline --skip-initial-scrape
+      - name: Subir registro (raw + fishing_types) a R2
+        if: always()  # guarda el caché parcial aunque el job se corte, para reanudar
+        run: scripts/r2_push.sh registry
+      - name: Resumen
+        if: always()
+        run: |
+          {
+            echo "## refresh-fishing-types"
+            echo ""
+            echo "- Región (\`REGION\`): \`${REGION}\`"
+            ft="data/processing/registry/fishing_types/register.csv"
+            reg="data/processing/registry/register.csv"
+            if [ -f "$ft" ]; then
+              n=$(($(wc -l < "$ft") - 1))
+              echo "- fishing_types (RPA scrapeados): **${n}**"
+            fi
+            if [ -f "$reg" ]; then
+              n=$(($(wc -l < "$reg") - 1))
+              echo "- registro final (cerco jurel + señal): **${n} embarcaciones**"
+              echo ""
+              echo "Regiones en el registro final:"
+              echo '```'
+              cut -d';' -f16 "$reg" | tail -n +2 | sort | uniq -c | sort -rn
+              echo '```'
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
