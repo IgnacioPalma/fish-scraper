@@ -45,6 +45,7 @@ from processing.utils.datasets import active_source
 from processing.utils.date_ranges import END_DATE, START_DATE
 from processing.utils.locations_common import FLEET_NAME
 from processing.utils.regions import active_region
+from processing.utils.species_scope import active_species_scope
 
 
 DATA_DIR = Path(__file__).resolve().parents[3] / "data" / "processing" / "locations"
@@ -220,11 +221,17 @@ def main() -> None:
     sys.stderr.reconfigure(line_buffering=True)
 
     tag = _rango_tag()
-    # Salidas y espina de captura scopeadas por fuente (SOURCE): `backup` anida
-    # bajo locations/backup/ y lee capture/backup/zarpes_atacama_capture.csv.
+    # Salidas y espina de captura scopeadas por fuente (SOURCE) y alcance de
+    # especies (SPECIES_SCOPE): `backup` anida bajo locations/backup/ y `all` bajo
+    # …/all_species/; lee la espina de la misma ruta scopeada de capture. La traza
+    # VMS filtrada (input_csv) es compartida (independiente de fuente y especie).
     source = active_source()
-    output_dir = source.scoped(DATA_DIR) / "zarpes"
-    unified_zarpes_csv = source.scoped(DATA_DIR.parent / "capture") / "zarpes_atacama_capture.csv"
+    scope = active_species_scope()
+    output_dir = scope.scoped(source.scoped(DATA_DIR)) / "zarpes"
+    unified_zarpes_csv = (
+        scope.scoped(source.scoped(DATA_DIR.parent / "capture"))
+        / "zarpes_atacama_capture.csv"
+    )
 
     input_csv = FILTERED_DIR / f"locations_{FLEET_NAME}_{tag}_registry.csv"
     pings_csv = output_dir / f"locations_{FLEET_NAME}_{tag}_zarpes.csv"

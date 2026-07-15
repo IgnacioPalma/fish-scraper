@@ -109,12 +109,14 @@ uv run python -m processing.registry.ifop_matching.match_ifop_vessels
 
 `scrape_fishing_types.py` consulta el Registro Público de Sernapesca por cada
 `Nº RPA` y extrae la `Señal Distintiva` (`signal_code`, en dígitos puros, sin
-prefijo `CA`/`CB`) y los métodos de captura autorizados para **JUREL**. Produce
-`fishing_types.csv` (catálogo de artes de JUREL, cada uno con un
-`fishing_type_id`) y `register.csv` (columnas del paso 3 más `signal_code` y
-`jurel_fishing_type_ids`, ids separados por `|` si la nave usa más de un arte).
+prefijo `CA`/`CB`) y los métodos de captura autorizados para **todas** las
+especies de la nave (no solo JUREL). Produce `fishing_types.csv` (catálogo de
+artes vistos en cualquier especie, cada uno con un `fishing_type_id`) y
+`register.csv` (columnas del paso 3 más `signal_code` y `species_fishing_types`:
+el mapeo especie→ids de arte, codificado como `ESPECIE:id[,id]|ESPECIE2:id…`).
 El scraping es idempotente: cachea cada RPA en `raw_scrape.csv` y reanuda los que
-falten (borra ese archivo para forzar una reconsulta completa).
+falten (borra ese archivo para forzar una reconsulta completa; el esquema del
+caché cambió a `species_methods`, así que una versión previa exige borrarlo).
 
 ```bash
 uv run python -m processing.registry.fishing_types.scrape_fishing_types
@@ -122,9 +124,10 @@ uv run python -m processing.registry.fishing_types.scrape_fishing_types
 
 ### 7. Filtro final — `cerco_filter/`
 
-`filter_cerco.py` conserva las embarcaciones cuyo **único** arte de JUREL es
-`CERCO` (id leído de `fishing_types.csv`) **y** que tienen `signal_code` no vacío.
-Escribe el producto final del registro en `data/processing/registry/register.csv`.
+`filter_cerco.py` conserva las embarcaciones cuyo **único** arte —sobre la unión
+de **todas** sus especies en `species_fishing_types`— es `CERCO` (id leído de
+`fishing_types.csv`) **y** que tienen `signal_code` no vacío. Escribe el producto
+final del registro en `data/processing/registry/register.csv`.
 
 ```bash
 uv run python -m processing.registry.cerco_filter.filter_cerco

@@ -19,16 +19,22 @@ from processing.utils.datasets import active_source
 from processing.utils.date_ranges import END_DATE, START_DATE
 from processing.utils.regions import active_region
 from processing.utils.species import ALL_SPECIES, SPECIES_OF_INTEREST
+from processing.utils.species_scope import active_species_scope
 
 
 DATA_DIR = Path(__file__).resolve().parents[3] / "data"
 
 
 def main() -> None:
-    # Rutas scopeadas por fuente (SOURCE): `bitacora` conserva las rutas
-    # históricas; `backup` anida bajo capture/backup/.
-    capture_dir = active_source().scoped(DATA_DIR / "processing" / "capture")
-    INPUT_CSV = capture_dir / "cleaned" / "capture.csv"
+    # Rutas scopeadas por fuente (SOURCE) y alcance de especies (SPECIES_SCOPE):
+    # `bitacora`+`jurel` conservan las rutas históricas; `backup` anida bajo
+    # capture/backup/ y `all` bajo …/all_species/.
+    # La ENTRADA (cleaned/capture.csv) es común a todos los alcances de especie
+    # (clean_capture es especie-agnóstico), así que NO se scopea por especie.
+    scope = active_species_scope()
+    source_capture_dir = active_source().scoped(DATA_DIR / "processing" / "capture")
+    capture_dir = scope.scoped(source_capture_dir)
+    INPUT_CSV = source_capture_dir / "cleaned" / "capture.csv"
     OUTPUT_DIR = capture_dir
     OUTPUT_CSV = OUTPUT_DIR / "capture.csv"
 
@@ -82,13 +88,22 @@ def main() -> None:
         )
         sys.exit(1)
 
-    # Filtro por especie de interés: captura positiva.
-    df = df.loc[df[SPECIES_OF_INTEREST].notna() & (df[SPECIES_OF_INTEREST] > 0)].copy()
+    # Filtro por captura positiva. Según el alcance de especies (SPECIES_SCOPE):
+    #   - `jurel`: solo recaladas con jurel > 0 (comportamiento histórico).
+    #   - `all`:   recaladas con captura positiva de CUALQUIER especie.
+    cols_especies = [s for s in ALL_SPECIES if s in df.columns]
+    if scope.require_jurel:
+        mask_especie = df[SPECIES_OF_INTEREST].notna() & (df[SPECIES_OF_INTEREST] > 0)
+        etiqueta_especie = SPECIES_OF_INTEREST
+    else:
+        mask_especie = df[cols_especies].fillna(0).gt(0).any(axis=1)
+        etiqueta_especie = "cualquier especie"
+    df = df.loc[mask_especie].copy()
     n_tras_especie = len(df)
 
     if n_tras_especie == 0:
         print(
-            f"ERROR: ningún registro tiene captura positiva de '{SPECIES_OF_INTEREST}' "
+            f"ERROR: ningún registro tiene captura positiva de '{etiqueta_especie}' "
             f"en {list(ports_of_interest)} dentro del rango de fechas seleccionado.",
             file=sys.stderr,
         )
@@ -99,9 +114,10 @@ def main() -> None:
     row_max = df[cols_especies].max(axis=1)
     df["PRINCIPAL_CATCH"] = df[SPECIES_OF_INTEREST] == row_max
 
-    # Eliminar columnas de otras especies.
-    cols_otras = [s for s in ALL_SPECIES if s != SPECIES_OF_INTEREST and s in df.columns]
-    df = df.drop(columns=cols_otras)
+    # Eliminar columnas de otras especies (solo en `jurel`; `all` las conserva).
+    if not scope.keep_all_species:
+        cols_otras = [s for s in ALL_SPECIES if s != SPECIES_OF_INTEREST and s in df.columns]
+        df = df.drop(columns=cols_otras)
 
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     df.to_csv(OUTPUT_CSV, sep=";", index=False, encoding="utf-8")
@@ -109,7 +125,7 @@ def main() -> None:
     print(
         f"Rango de fechas:               {START_DATE} – {END_DATE}\n"
         f"Puerto(s):                     {', '.join(ports_of_interest)}\n"
-        f"Especie:                       {SPECIES_OF_INTEREST}\n"
+        f"Especie(s):                    {etiqueta_especie}\n"
         f"Filas en entrada:              {total:,}\n"
         f"Tras filtro de fechas:         {n_tras_fecha:,}\n"
         f"Tras filtro de puerto:         {n_tras_puerto:,}\n"

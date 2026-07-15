@@ -91,11 +91,13 @@ disponibles (2012-2024); el recorte temporal lo hace la etapa de filtrado.
 ### 2. Filtrado — `processing/capture/filter/`
 
 `filter_capture.py` recorta las recaladas al rango de fechas global del proyecto
-([utils/date_ranges.py](../utils/date_ranges.py)), al puerto de interés
-([utils/ports.py](../utils/ports.py), `Caldera`) y a la especie de interés
-([utils/species.py](../utils/species.py), `JACK_MACKEREL`), reteniendo solo las
-recaladas con captura positiva de jurel. Añade `PRINCIPAL_CATCH` (jurel fue la
-especie más capturada del viaje) y elimina las columnas de las demás especies.
+([utils/date_ranges.py](../utils/date_ranges.py)) y al puerto de interés
+([utils/ports.py](../utils/ports.py), `Caldera`). El filtro por especie depende
+del alcance activo (`SPECIES_SCOPE`, ver más abajo): en `jurel` (por defecto)
+retiene solo las recaladas con captura positiva de `JACK_MACKEREL` y elimina las
+columnas de las demás especies; en `all` retiene las recaladas con captura
+positiva de **cualquier** especie y conserva todas las columnas. En ambos casos
+añade `PRINCIPAL_CATCH` (jurel fue la especie más capturada del viaje).
 
 ### 3. Unificación — `processing/capture/unify/`
 
@@ -111,6 +113,31 @@ aguas abajo (`identify_zarpes.py`) y ya no se filtra por nº de lances. Salida:
 dataset de modelado). Usar la bitácora como espina —en vez de los ~80 viajes
 observados de IFOP que coincidían al minuto— lleva los zarpes con captura a
 ~2.400.
+
+## Salida alternativa: todas las especies (`SPECIES_SCOPE=all`)
+
+Además del dataset jurel-céntrico, el pipeline puede producir EN PARALELO un
+dataset con la composición **multiespecie** de cada zarpe, seleccionado por la
+variable de entorno `SPECIES_SCOPE` (ver [utils/species_scope.py](../utils/species_scope.py)),
+ortogonal a `SOURCE` y `REGION`:
+
+- `jurel` (por defecto): comportamiento histórico idéntico (una sola columna de
+  captura, `jack_mackerel_tons`; rutas y salidas sin cambio).
+- `all`: conserva las recaladas con captura positiva de cualquier especie y
+  arrastra una columna `<especie>_tons` por especie a lo largo de todo el
+  pipeline (captura → lugar del lance → muestreo ambiental). Anida sus artefactos
+  bajo subdirectorios `all_species/` y sufija el producto final con `_all_species`
+  (`data/output/zarpes_<region>[_<source>]_all_species_haul_env.csv`).
+
+La flota sigue siendo **solo cerco**: el recorte se aplica aguas abajo al cruzar
+la espina de zarpes contra las trazas VMS ya filtradas al registro de cerco, así
+que el dataset `all` queda igualmente acotado a la flota de cerco. La etapa de
+limpieza (`cleaned/capture.csv`) es especie-agnóstica y se comparte entre
+alcances (no se scopea).
+
+```bash
+SPECIES_SCOPE=all uv run python -m processing.capture.run_pipeline
+```
 
 ## Consumidores aguas abajo
 

@@ -49,6 +49,7 @@ from pathlib import Path
 import pandas as pd
 
 from processing.utils.datasets import active_source
+from processing.utils.species_scope import active_species_scope
 
 
 LOCATIONS_DIR = Path(__file__).resolve().parents[3] / "data" / "processing" / "locations"
@@ -80,9 +81,10 @@ def main() -> None:
     sys.stdout.reconfigure(line_buffering=True)
     sys.stderr.reconfigure(line_buffering=True)
 
-    # Entrada/salida scopeadas por fuente (SOURCE): `backup` anida bajo
-    # locations/backup/.
-    source_dir = active_source().scoped(LOCATIONS_DIR)
+    # Entrada/salida scopeadas por fuente (SOURCE) y alcance de especies
+    # (SPECIES_SCOPE): `backup` anida bajo locations/backup/, `all` bajo
+    # …/all_species/.
+    source_dir = active_species_scope().scoped(active_source().scoped(LOCATIONS_DIR))
     HAUL_CSV = source_dir / "fishing_location" / "zarpes_atacama_haul_location.csv"
     OUTPUT_DIR = source_dir / "single_haul"
     SINGLE_CSV = OUTPUT_DIR / "zarpes_atacama_haul_single.csv"

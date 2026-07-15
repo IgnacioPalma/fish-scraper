@@ -73,6 +73,7 @@ import xarray as xr
 
 from processing.utils.datasets import active_source
 from processing.utils.regions import active_region
+from processing.utils.species_scope import active_species_scope
 
 OUTPUT_DIR = Path(__file__).resolve().parents[2] / "data" / "output"
 COPERNICUS_DIR = Path(__file__).resolve().parents[2] / "data" / "copernicus"
@@ -239,12 +240,20 @@ def _moon_illumination(ts: pd.Timestamp) -> float:
 def main() -> None:
     sys.stdout.reconfigure(line_buffering=True)
 
-    # Rutas scopeadas por fuente (SOURCE), resueltas en tiempo de ejecución para que
-    # run_all pueda alternar SOURCE en el mismo proceso. `backup` lee
-    # locations/backup/single_haul/ y escribe zarpes_<region>_backup_haul_env.csv.
+    # Rutas scopeadas por fuente (SOURCE) y alcance de especies (SPECIES_SCOPE),
+    # resueltas en tiempo de ejecución para que run_all pueda alternarlas en el
+    # mismo proceso. `backup` lee locations/backup/…; `all` lee …/all_species/… y
+    # escribe zarpes_<region>[_backup]_all_species_haul_env.csv.
     source = active_source()
-    HAUL_CSV = source.scoped(_LOCATIONS_DIR) / "single_haul" / "zarpes_atacama_haul_single.csv"
-    OUTPUT_CSV = OUTPUT_DIR / f"zarpes_{active_region().key}{source.output_suffix()}_haul_env.csv"
+    scope = active_species_scope()
+    HAUL_CSV = (
+        scope.scoped(source.scoped(_LOCATIONS_DIR))
+        / "single_haul" / "zarpes_atacama_haul_single.csv"
+    )
+    OUTPUT_CSV = OUTPUT_DIR / (
+        f"zarpes_{active_region().key}{source.output_suffix()}"
+        f"{scope.output_suffix()}_haul_env.csv"
+    )
 
     if not HAUL_CSV.exists():
         sys.exit(

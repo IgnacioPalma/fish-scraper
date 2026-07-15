@@ -39,16 +39,25 @@ from pathlib import Path
 import pandas as pd
 
 from processing.utils.datasets import active_source
+from processing.utils.species import ALL_SPECIES, SPECIES_OF_INTEREST
+from processing.utils.species_scope import active_species_scope
 
 
 DATA_DIR    = Path(__file__).resolve().parents[3] / "data"
 VESSELS_CSV = DATA_DIR / "processing" / "ifop" / "vessels.csv"
 
-# Columnas de salida (orden final del dataset de zarpes con captura).
-OUTPUT_COLS = [
+# Columnas base (siempre presentes); las columnas de captura por especie se
+# insertan dinámicamente entre `landing_port` y `principal_catch` según qué
+# especies traiga la captura filtrada (una en `jurel`, todas en `all`).
+BASE_COLS = [
     "zarpe_id", "vessel_code", "vessel_name", "cod_barco",
-    "landing_datetime", "landing_port", "jack_mackerel_tons", "principal_catch",
+    "landing_datetime", "landing_port",
 ]
+
+
+def _species_col(species: str) -> str:
+    """Nombre de columna de captura por especie (p.ej. JACK_MACKEREL → jack_mackerel_tons)."""
+    return f"{species.lower()}_tons"
 
 
 def construir(capture: pd.DataFrame, vessels: pd.DataFrame) -> pd.DataFrame:
@@ -65,22 +74,37 @@ def construir(capture: pd.DataFrame, vessels: pd.DataFrame) -> pd.DataFrame:
     vn["vessel_code"] = vn["vessel_code"].astype(str).str.strip()
     vn = vn.drop_duplicates(subset=["vessel_code"], keep="first")
 
-    out = pd.DataFrame({
+    # Columnas de especie presentes en la captura (jurel siempre primero, luego el
+    # resto en el orden de ALL_SPECIES). En `jurel` solo estará JACK_MACKEREL.
+    especies = [SPECIES_OF_INTEREST] + [
+        s for s in ALL_SPECIES if s != SPECIES_OF_INTEREST
+    ]
+    especies = [s for s in especies if s in c.columns]
+
+    datos = {
         "vessel_code":      c["vessel_code"],
         "cod_barco":        c["COD_BARCO"],
         "landing_datetime": c["LANDING_DATETIME"],
         "landing_port":     c["PORT"],
-        "jack_mackerel_tons": c["JACK_MACKEREL"],
-        "principal_catch":  c["PRINCIPAL_CATCH"],
-    })
+    }
+    for s in especies:
+        datos[_species_col(s)] = c[s]
+    datos["principal_catch"] = c["PRINCIPAL_CATCH"]
+
+    out = pd.DataFrame(datos)
     out = out.merge(vn, on="vessel_code", how="left")
     out.insert(0, "zarpe_id", range(1, len(out) + 1))
-    return out[OUTPUT_COLS]
+
+    cols = BASE_COLS + [_species_col(s) for s in especies] + ["principal_catch"]
+    return out[cols]
 
 
 def main() -> None:
-    # Rutas scopeadas por fuente (SOURCE): `backup` anida bajo capture/backup/.
-    capture_dir = active_source().scoped(DATA_DIR / "processing" / "capture")
+    # Rutas scopeadas por fuente (SOURCE) y alcance de especies (SPECIES_SCOPE):
+    # `backup` anida bajo capture/backup/, `all` bajo …/all_species/.
+    capture_dir = active_species_scope().scoped(
+        active_source().scoped(DATA_DIR / "processing" / "capture")
+    )
     CAPTURE_CSV = capture_dir / "capture.csv"
     OUTPUT_DIR  = capture_dir
     OUTPUT_CSV  = OUTPUT_DIR / "zarpes_atacama_capture.csv"

@@ -59,6 +59,10 @@ from contextlib import contextmanager
 # `bitacora` (rutas históricas) primero y `backup` después.
 SOURCES = ["bitacora", "backup"]
 
+# Alcances de especie a correr (ver processing/utils/species_scope.py). `jurel`
+# (rutas históricas, solo jurel) primero y `all` (todas las especies) después.
+SPECIES_SCOPES = ["jurel", "all"]
+
 
 def _seccion(titulo: str) -> None:
     """Imprime un encabezado de pipeline (bloque mayor)."""
@@ -132,6 +136,7 @@ def main() -> None:
     from processing.locations import run_pipeline as locations_pipeline
     from processing.copernicus import run_pipeline as copernicus_pipeline
     from processing.utils.datasets import SOURCES as REGISTERED_SOURCES
+    from processing.utils.species_scope import SPECIES_SCOPES as REGISTERED_SCOPES
     from processing.utils.regions import active_region
 
     # 3 · Localizaciones VMS — etapas COMPARTIDAS (descarga → filtro), una vez ----
@@ -144,33 +149,46 @@ def main() -> None:
     with _argv(*(["--skip-download"] if args.skip_download else []), "--download-only"):
         copernicus_pipeline.main()
 
-    # 5 · Cola dependiente de la fuente, una vez por SOURCE ----------------------
+    # 5 · Cola dependiente de la fuente × alcance de especie -----------------------
+    # Se corre una vez por cada combinación (SOURCE, SPECIES_SCOPE). El upstream
+    # compartido (etapas 1-4, incl. el registro con arte por especie) ya corrió.
     previo_source = os.environ.get("SOURCE")
+    previo_scope = os.environ.get("SPECIES_SCOPE")
     try:
         for source in SOURCES:
             if source not in REGISTERED_SOURCES:
                 sys.exit(f"ERROR: SOURCE '{source}' no está registrada en datasets.py.")
             os.environ["SOURCE"] = source
-            _seccion(f"5/5 · Fuente '{source}' · captura → lugar del lance → muestreo")
+            for scope in SPECIES_SCOPES:
+                if scope not in REGISTERED_SCOPES:
+                    sys.exit(f"ERROR: SPECIES_SCOPE '{scope}' no está registrado en species_scope.py.")
+                os.environ["SPECIES_SCOPE"] = scope
+                _seccion(
+                    f"5/5 · Fuente '{source}' · especies '{scope}' · "
+                    "captura → lugar del lance → muestreo"
+                )
 
-            with _argv():
-                capture_pipeline.main()
-            with _argv("--source-only"):
-                locations_pipeline.main()
-            # Reutiliza las grillas ya descargadas: aquí solo se muestrea.
-            with _argv("--skip-download"):
-                copernicus_pipeline.main()
+                with _argv():
+                    capture_pipeline.main()
+                with _argv("--source-only"):
+                    locations_pipeline.main()
+                # Reutiliza las grillas ya descargadas: aquí solo se muestrea.
+                with _argv("--skip-download"):
+                    copernicus_pipeline.main()
     finally:
-        if previo_source is None:
-            os.environ.pop("SOURCE", None)
-        else:
-            os.environ["SOURCE"] = previo_source
+        for var, previo in (("SOURCE", previo_source), ("SPECIES_SCOPE", previo_scope)):
+            if previo is None:
+                os.environ.pop(var, None)
+            else:
+                os.environ[var] = previo
 
     region = active_region().key
     productos = "\n".join(
         f"  data/output/zarpes_{region}"
-        f"{'' if s == 'bitacora' else '_' + s}_haul_env.csv"
+        f"{'' if s == 'bitacora' else '_' + s}"
+        f"{'' if sc == 'jurel' else '_' + REGISTERED_SCOPES[sc].slug}_haul_env.csv"
         for s in SOURCES
+        for sc in SPECIES_SCOPES
     )
     _seccion(f"Pipeline completo · datasets de modelado:\n{productos}")
 

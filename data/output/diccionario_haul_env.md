@@ -6,12 +6,21 @@ modelado. Una fila por zarpe de un único lance confiable. Hereda todas las colu
 ubicación del lance) y agrega las covariables ambientales muestreadas en el punto y día
 del lance + columnas de auditoría.
 
+> **Variante multiespecie (`SPECIES_SCOPE=all`).** Con `SPECIES_SCOPE=all` el
+> producto se escribe como `zarpes_<region>[_<source>]_all_species_haul_env.csv` y,
+> en lugar de la única columna `jack_mackerel_tons`, trae una columna
+> `<especie>_tons` por especie (p.ej. `jack_mackerel_tons`, `anchovy_tons`,
+> `sardine_tons`, …; ver [utils/species.py](../../processing/utils/species.py)). El
+> conjunto de zarpes es un **superconjunto** (todas las recaladas de la flota de
+> cerco con captura positiva de cualquier especie, no solo las con jurel). El resto
+> del esquema es idéntico.
+
 | Columna | Unidad | Descripción |
 |---|---|---|
 | `zarpe_id` | — | Identificador único del zarpe (viaje de pesca). |
 | `vessel_code` | — | Código interno IFOP de la embarcación. |
 | `vessel_name` | — | Nombre de la embarcación. |
-| `jack_mackerel_tons` | tons | Captura de jurel del zarpe (variable respuesta del modelo). |
+| `jack_mackerel_tons` | tons | Captura de jurel del zarpe (variable respuesta del modelo). En `SPECIES_SCOPE=all` se acompaña de una columna `<especie>_tons` por cada especie. |
 | `principal_catch` | booleano | `True` si el jurel fue la especie con mayor captura del viaje. |
 | `n_hauls` | — | Nº de lances confiables del viaje. En este dataset siempre `1` (filtro de un único lance). |
 | `haul_confidence` | — | Confianza de la ubicación. En este dataset siempre `alta` (anillo circular del cerco). |

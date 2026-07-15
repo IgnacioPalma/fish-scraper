@@ -9,6 +9,13 @@ Una fila por zarpe, con las **mismas columnas** que `zarpes_atacama_haul_locatio
 (ver `zarpes_atacama_haul_location_diccionario.md`) **más `sample_weight` e
 `is_single_haul`**, conservando **todos los zarpes con ubicación de lance**:
 
+> **Variante multiespecie (`SPECIES_SCOPE=all`).** Con `SPECIES_SCOPE=all` el
+> archivo se genera bajo `…/all_species/single_haul/` y trae una columna
+> `<especie>_tons` por especie en lugar de solo `jack_mackerel_tons`; el conjunto
+> de zarpes es un superconjunto (recaladas de cerco con captura de cualquier
+> especie). El resto del esquema es idéntico.
+
+
 - Se CONSERVAN los `haul_confidence in {"alta", "baja"}` (los que tienen
   `haul_lat`/`haul_lon`).
 - Se DESCARTAN solo los `haul_confidence == "sin_pesca"` (sin ningún tramo lento mar
